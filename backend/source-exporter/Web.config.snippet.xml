@@ -1,0 +1,22 @@
+<!--
+  Add these entries to the Web.config of the IIS site you drop ExhiRegExport.ashx into.
+  If the site already has <connectionStrings> or <appSettings>, merge the <add> lines
+  into the existing sections instead of duplicating the section.
+
+  Generate a strong ExhiExportApiKey (e.g. 48+ random chars) and paste the SAME value
+  into the CRM backend's .env as SOURCE_API_KEY.
+-->
+<configuration>
+
+  <connectionStrings>
+    <!-- Runs on the same box as SQL Server, so connect to localhost. -->
+    <add name="SourceDb"
+         providerName="System.Data.SqlClient"
+         connectionString="Server=localhost;Database=convergenceindia;User Id=ca-india;Password=eigsmar!@2k29;TrustServerCertificate=True;Encrypt=True" />
+  </connectionStrings>
+
+  <appSettings>
+    <add key="ExhiExportApiKey" value="REPLACE_WITH_A_LONG_RANDOM_SECRET" />
+  </appSettings>
+
+</configuration>

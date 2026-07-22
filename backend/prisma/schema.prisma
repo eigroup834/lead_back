@@ -1,0 +1,689 @@
+// Exhibitor Lead Management CRM — PostgreSQL schema (Prisma)
+// Conventions: UUID PKs, created/updated/deletedAt (soft delete), snake_case columns,
+// heavy indexing for 1M+ leads, append-only tables are range-partition-ready by createdAt.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum LeadStatus {
+  NEW
+  ASSIGNED
+  CONTACTED
+  NOT_REACHABLE
+  INTERESTED
+  FOLLOW_UP
+  HOT
+  WARM
+  COLD
+  CONVERTED
+  LOST
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  WHATSAPP
+  MEETING
+  FOLLOW_UP
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Where a lead originated. WEBSITE = pulled from the source site via sync;
+// the rest are set when a lead is added manually.
+enum LeadSource {
+  WEBSITE
+  MANUAL
+  REFERRAL
+  WALK_IN
+  EMAIL
+  PHONE
+  SOCIAL_MEDIA
+  PARTNER
+  OTHER
+}
+
+// What kind of lead this is.
+enum LeadType {
+  EXHIBITION
+  VISITOR
+  DELEGATE
+  SPEAKER
+}
+
+enum FollowupStatus {
+  PENDING
+  DONE
+  OVERDUE
+  CANCELLED
+}
+
+enum AssignmentType {
+  SINGLE
+  BULK
+  AUTO
+  REASSIGN
+}
+
+enum AssignmentStrategy {
+  MANUAL
+  ROUND_ROBIN
+  SKILL_BASED
+  TERRITORY_BASED
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+  SMS
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+// ============================================================================
+// ORGANIZATION & RBAC
+// ============================================================================
+
+model Department {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  users User[]
+  teams Team[]
+
+  @@map("departments")
+}
+
+model Team {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  departmentId String    @map("department_id") @db.Uuid
+  leaderId     String?   @map("leader_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  department Department @relation(fields: [departmentId], references: [id])
+  leader     User?      @relation("TeamLeader", fields: [leaderId], references: [id])
+  members    User[]     @relation("TeamMembers")
+
+  @@index([departmentId])
+  @@map("teams")
+}
+
+model Role {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique // SUPER_ADMIN, HEAD, TEAM_LEADER, SALES_EXECUTIVE, ...
+  label       String
+  // hierarchy level: 1=Super Admin (highest) ... 4=Sales Executive (lowest)
+  level       Int
+  isSystem    Boolean   @default(false) @map("is_system")
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@index([level])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique // e.g. lead.view, lead.assign, report.export
+  module      String // lead, user, role, analytics, dashboard, report, audit
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roles RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  // Reversibly-encrypted copy (AES-256-GCM) so SUPER_ADMIN can reveal the
+  // password. Decrypted only server-side, SUPER_ADMIN-only, audit-logged.
+  passwordEnc  String?    @map("password_enc")
+  firstName    String     @map("first_name")
+  lastName     String     @map("last_name")
+  phone        String?
+  status       UserStatus @default(ACTIVE)
+  departmentId String?    @map("department_id") @db.Uuid
+  teamId       String?    @map("team_id") @db.Uuid
+  managerId    String?    @map("manager_id") @db.Uuid // hierarchy self-relation
+  lastLoginAt  DateTime?  @map("last_login_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  deletedAt    DateTime?  @map("deleted_at")
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  team       Team?       @relation("TeamMembers", fields: [teamId], references: [id])
+  manager    User?       @relation("UserHierarchy", fields: [managerId], references: [id])
+  reports    User[]      @relation("UserHierarchy")
+  ledTeams   Team[]      @relation("TeamLeader")
+
+  roles           UserRole[]
+  refreshTokens   RefreshToken[]
+  assignedLeads   Lead[]              @relation("LeadAssignee")
+  assignmentsMade LeadAssignment[]    @relation("AssignmentBy")
+  assignmentsRecv LeadAssignment[]    @relation("AssignmentTo")
+  statusChanges   LeadStatusHistory[]
+  notes           LeadNote[]
+  activities      LeadActivity[]
+  followups       LeadFollowup[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  savedFilters    SavedFilter[]
+  historicalUploads HistoricalUpload[]
+
+  @@index([departmentId])
+  @@index([teamId])
+  @@index([managerId])
+  @@index([status])
+  @@map("users")
+}
+
+model UserRole {
+  userId    String   @map("user_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") // sha256 of the random token
+  familyId  String    @map("family_id") @db.Uuid // rotation family for reuse detection
+  userAgent String?   @map("user_agent")
+  ip        String?
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// ============================================================================
+// LEADS (partition-ready by created_at)
+// ============================================================================
+
+model Lead {
+  id            String  @id @default(uuid()) @db.Uuid
+  // de-dup key: maps to the source website DB row id. Not globally unique on its
+  // own because exhi_reg and download_reg have independent id sequences that can
+  // collide — uniqueness is per (sourceChannel, sourceId), see @@unique below.
+  sourceId      Int?    @map("source_id")
+  // Which website flow this lead came from: SPACE_BOOKING (exhi_reg) or
+  // POST_SHOW_DOWNLOAD (download_reg, business_interest=Exhibitor). Null = MANUAL.
+  sourceChannel String? @map("source_channel")
+
+  title        String?
+  company      String?
+  firstName    String? @map("first_name")
+  lastName     String? @map("last_name")
+  designation  String?
+  shellSpace   String? @map("shell_space")
+  rawSpace     String? @map("raw_space")
+  address      String?
+  city         String?
+  state        String?
+  zipCode      String? @map("zip_code")
+  country      String?
+  phone        String?
+  email        String?
+  mobile       String?
+  website      String?
+  learnAbout   String? @map("learn_about") // lead source
+  remarks      String?
+  ipAddress    String? @map("ip_address")
+  eventName    String? @map("event_name")
+  sourceStatus String? @map("source_status") // raw status from source
+
+  source   LeadSource @default(MANUAL) // WEBSITE for synced leads
+  leadType LeadType?  @map("lead_type")
+
+  status         LeadStatus @default(NEW)
+  priority       Priority   @default(MEDIUM)
+  assignedUserId String?    @map("assigned_user_id") @db.Uuid
+  assignedAt     DateTime?  @map("assigned_at")
+
+  createDate DateTime? @map("create_date") // original registration date from source
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  assignedUser  User?               @relation("LeadAssignee", fields: [assignedUserId], references: [id])
+  assignments   LeadAssignment[]
+  statusHistory LeadStatusHistory[]
+  notes         LeadNote[]
+  activities    LeadActivity[]
+  followups     LeadFollowup[]
+  attachments   LeadAttachment[]
+
+  // de-dup key: source row id is unique within a channel (independent sequences)
+  @@unique([sourceChannel, sourceId])
+  // Indexing strategy (spec): email, mobile, status, assigned_user, create_date,
+  // event_name, country, plus composites for filtered list queries.
+  @@index([email])
+  @@index([mobile])
+  @@index([status])
+  @@index([assignedUserId])
+  @@index([createDate])
+  @@index([eventName])
+  @@index([country])
+  @@index([status, assignedUserId])
+  @@index([country, status])
+  @@index([source])
+  @@index([sourceChannel])
+  @@index([createdAt]) // partition / cursor key
+  @@map("leads")
+}
+
+model LeadAssignment {
+  id           String             @id @default(uuid()) @db.Uuid
+  leadId       String             @map("lead_id") @db.Uuid
+  assignedToId String             @map("assigned_to_id") @db.Uuid
+  assignedById String             @map("assigned_by_id") @db.Uuid
+  type         AssignmentType     @default(SINGLE)
+  strategy     AssignmentStrategy @default(MANUAL)
+  note         String?
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  lead       Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedTo User @relation("AssignmentTo", fields: [assignedToId], references: [id])
+  assignedBy User @relation("AssignmentBy", fields: [assignedById], references: [id])
+
+  @@index([leadId])
+  @@index([assignedToId])
+  @@index([createdAt])
+  @@map("lead_assignments")
+}
+
+model LeadStatusHistory {
+  id          String      @id @default(uuid()) @db.Uuid
+  leadId      String      @map("lead_id") @db.Uuid
+  fromStatus  LeadStatus? @map("from_status")
+  toStatus    LeadStatus  @map("to_status")
+  changedById String?     @map("changed_by_id") @db.Uuid
+  reason      String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  lead      Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  changedBy User? @relation(fields: [changedById], references: [id])
+
+  @@index([leadId, createdAt])
+  @@map("lead_status_history")
+}
+
+model LeadNote {
+  id        String    @id @default(uuid()) @db.Uuid
+  leadId    String    @map("lead_id") @db.Uuid
+  authorId  String    @map("author_id") @db.Uuid
+  body      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  lead   Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([leadId])
+  @@map("lead_notes")
+}
+
+model LeadActivity {
+  id           String       @id @default(uuid()) @db.Uuid
+  leadId       String       @map("lead_id") @db.Uuid
+  userId       String       @map("user_id") @db.Uuid
+  type         ActivityType
+  activityDate DateTime     @map("activity_date")
+  durationSec  Int?         @map("duration_sec") // call/meeting duration
+  outcome      String?
+  remarks      String?
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([leadId, activityDate])
+  @@index([userId, activityDate])
+  @@index([type])
+  @@map("lead_activities")
+}
+
+model LeadFollowup {
+  id           String         @id @default(uuid()) @db.Uuid
+  leadId       String         @map("lead_id") @db.Uuid
+  assigneeId   String         @map("assignee_id") @db.Uuid
+  followupDate DateTime       @map("followup_date") @db.Date
+  followupTime String?        @map("followup_time") // "HH:mm"
+  priority     Priority       @default(MEDIUM)
+  status       FollowupStatus @default(PENDING)
+  note         String?
+  completedAt  DateTime?      @map("completed_at")
+  // Set once the SMS reminder has gone out, so the reminder job never double-sends.
+  // Cleared when the follow-up is rescheduled.
+  reminderSentAt DateTime?    @map("reminder_sent_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  lead     Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignee User @relation(fields: [assigneeId], references: [id])
+
+  @@index([followupDate, status])
+  @@index([assigneeId, status])
+  @@index([leadId])
+  @@index([status, reminderSentAt]) // reminder job scan
+  @@map("lead_followups")
+}
+
+model LeadAttachment {
+  id        String    @id @default(uuid()) @db.Uuid
+  leadId    String    @map("lead_id") @db.Uuid
+  fileName  String    @map("file_name")
+  fileKey   String    @map("file_key") // local path now, S3 key later
+  mimeType  String    @map("mime_type")
+  sizeBytes Int       @map("size_bytes")
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_attachments")
+}
+
+// ============================================================================
+// EXTERNAL / POST-SHOW LEADS (staged for the local CRM)
+// ============================================================================
+
+// Post-show download leads whose business_interest is NOT Exhibitor. These do
+// not belong in the exhibitor CRM (the Lead table) — they are staged here and
+// later handed off to the separate local CRM. Exhibitor post-show leads go into
+// Lead with sourceChannel=POST_SHOW_DOWNLOAD instead.
+enum ExternalLeadCategory {
+  VISITOR
+  SPEAKER
+  DELEGATE
+  OTHER // unrecognized business_interest — kept, never dropped
+}
+
+model ExternalLead {
+  id       String @id @default(uuid()) @db.Uuid
+  // de-dup key: dbo.download_reg.id (single source, so globally unique here)
+  sourceId Int?   @unique @map("source_id")
+
+  category ExternalLeadCategory @default(OTHER)
+
+  name             String?
+  firstName        String? @map("first_name")
+  lastName         String? @map("last_name")
+  email            String?
+  mobile           String?
+  designation      String?
+  company          String?
+  industry         String?
+  businessInterest String? @map("business_interest") // raw source value
+  eventName        String? @map("event_name")
+  ipAddress        String? @map("ip_address")
+
+  createDate DateTime? @map("create_date") // original registration date
+  // full raw source row, so nothing is lost before the local-CRM handoff
+  raw        Json?
+
+  source        LeadSource @default(WEBSITE)
+  sourceChannel String?    @default("POST_SHOW_DOWNLOAD") @map("source_channel")
+
+  // local-CRM handoff tracking (staging table; null = not yet exported)
+  exportedToCrmAt DateTime? @map("exported_to_crm_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([category])
+  @@index([email])
+  @@index([mobile])
+  @@index([eventName])
+  @@index([exportedToCrmAt])
+  @@index([createdAt])
+  @@map("external_leads")
+}
+
+// ============================================================================
+// HISTORICAL DATA (per-user Excel of past / follow-up leads)
+// ============================================================================
+
+// A sales rep uploads their own year-on-year follow-up spreadsheet. Because every
+// rep's sheet has a different layout, we do NOT force a schema: the parsed rows are
+// stored as JSON keyed by the sheet's own column headers. `mapping` records how the
+// arbitrary columns line up with our Lead fields so any row can be converted into a
+// real (exhibitor) lead later. Ownership is per-user — reps only see their own uploads.
+model HistoricalUpload {
+  id             String    @id @default(uuid()) @db.Uuid
+  ownerId        String    @map("owner_id") @db.Uuid
+  fileName       String    @map("file_name")
+  sheetName      String?   @map("sheet_name")
+  columns        Json      // string[] of the sheet's header names, in order
+  mapping        Json?     // { leadField: columnName } — how columns map to Lead fields
+  rowCount       Int       @default(0) @map("row_count")
+  convertedCount Int       @default(0) @map("converted_count")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  owner User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  rows  HistoricalRow[]
+
+  @@index([ownerId])
+  @@index([createdAt])
+  @@map("historical_uploads")
+}
+
+model HistoricalRow {
+  id              String    @id @default(uuid()) @db.Uuid
+  uploadId        String    @map("upload_id") @db.Uuid
+  rowIndex        Int       @map("row_index") // 0-based position in the sheet
+  data            Json      // { columnName: cellValue } for this row
+  convertedLeadId String?   @map("converted_lead_id") @db.Uuid // set once turned into a Lead
+  convertedAt     DateTime? @map("converted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  upload HistoricalUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([uploadId, rowIndex])
+  @@index([convertedLeadId])
+  @@map("historical_rows")
+}
+
+// A converted lead archived out of Lead Management into a permanent, year-tagged
+// history (e.g. "Tata — 2026 event"). Kept forever: moving one back to Lead
+// Management for a future event creates a fresh Lead and leaves this record intact.
+// sourceLeadId / restoredLeadId are loose references (the original Lead is soft-
+// deleted on archive), so no FK constraints here.
+model HistoricalLead {
+  id             String     @id @default(uuid()) @db.Uuid
+  eventYear      Int        @map("event_year")
+  eventName      String?    @map("event_name")
+  company        String?
+  firstName      String?    @map("first_name")
+  lastName       String?    @map("last_name")
+  designation    String?
+  email          String?
+  mobile         String?
+  phone          String?
+  city           String?
+  country        String?
+  status         LeadStatus @default(CONVERTED)
+  sourceLeadId   String?    @map("source_lead_id") @db.Uuid
+  restoredLeadId String?    @map("restored_lead_id") @db.Uuid
+  archivedById   String?    @map("archived_by_id") @db.Uuid
+  archivedAt     DateTime   @default(now()) @map("archived_at")
+
+  @@index([eventYear])
+  @@index([email])
+  @@index([company])
+  @@index([archivedAt])
+  @@map("historical_leads")
+}
+
+// ============================================================================
+// SYNC (external import)
+// ============================================================================
+
+// single-row-per-source cursor (idempotent, resumable)
+model SyncState {
+  id             String    @id @default(uuid()) @db.Uuid
+  source         String    @unique @default("exhi_reg")
+  lastSyncedId   Int       @default(0) @map("last_synced_id")
+  lastSyncedDate DateTime? @map("last_synced_date")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("sync_state")
+}
+
+model SyncLog {
+  id            String     @id @default(uuid()) @db.Uuid
+  source        String     @default("exhi_reg")
+  status        SyncStatus @default(RUNNING)
+  fetchedCount  Int        @default(0) @map("fetched_count")
+  insertedCount Int        @default(0) @map("inserted_count")
+  skippedCount  Int        @default(0) @map("skipped_count")
+  fromId        Int?       @map("from_id")
+  toId          Int?       @map("to_id")
+  error         String?
+  startedAt     DateTime   @default(now()) @map("started_at")
+  finishedAt    DateTime?  @map("finished_at")
+  durationMs    Int?       @map("duration_ms")
+
+  @@index([status, startedAt])
+  @@map("sync_logs")
+}
+
+// ============================================================================
+// AUDIT & NOTIFICATIONS
+// ============================================================================
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String // LOGIN, LOGOUT, LEAD_ASSIGN, LEAD_UPDATE, USER_UPDATE, ROLE_CHANGE, EXPORT
+  module    String // auth, lead, user, role, report
+  entityId  String?  @map("entity_id")
+  ip        String?
+  userAgent String?  @map("user_agent")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([module])
+  @@index([action])
+  @@index([createdAt]) // partition-ready
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @map("user_id") @db.Uuid
+  channel   NotificationChannel @default(IN_APP)
+  status    NotificationStatus  @default(PENDING)
+  title     String
+  body      String?
+  data      Json?
+  readAt    DateTime?           @map("read_at")
+  sentAt    DateTime?           @map("sent_at")
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model SavedFilter {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  resource  String   @default("leads")
+  query     Json // serialized filter/sort/columns state
+  isShared  Boolean  @default(false) @map("is_shared")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, resource])
+  @@map("saved_filters")
+}
