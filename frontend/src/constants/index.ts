@@ -6,17 +6,22 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import GroupWorkIcon from '@mui/icons-material/GroupWork';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import HistoryIcon from '@mui/icons-material/History';
-import AssessmentIcon from '@mui/icons-material/Assessment';
 import InsightsIcon from '@mui/icons-material/Insights';
 import PeopleIcon from '@mui/icons-material/People';
 import SecurityIcon from '@mui/icons-material/Security';
 import SettingsIcon from '@mui/icons-material/Settings';
 
 export const LEAD_STATUSES = [
-  'NEW', 'ASSIGNED', 'CONTACTED', 'NOT_REACHABLE', 'INTERESTED',
-  'FOLLOW_UP', 'HOT', 'WARM', 'COLD', 'CONVERTED', 'LOST',
+  'NEW', 'ASSIGNED', 'CONTACTED', 'NOT_REACHABLE', 'INTERESTED', 'NOT_INTERESTED',
+  'FOLLOW_UP', 'HOT', 'WARM', 'COLD', 'CONVERTED', 'INVALID', 'LOST',
 ] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+// Statuses a rep can set manually on the lead detail page (the rest are
+// system-managed or not in use yet).
+export const LEAD_DETAIL_STATUS_OPTIONS: LeadStatus[] = [
+  'INTERESTED', 'NOT_INTERESTED', 'FOLLOW_UP', 'CONVERTED', 'INVALID', 'NOT_REACHABLE',
+];
 
 // status -> MUI chip color
 export const STATUS_COLOR: Record<LeadStatus, 'default' | 'info' | 'primary' | 'success' | 'warning' | 'error'> = {
@@ -25,11 +30,13 @@ export const STATUS_COLOR: Record<LeadStatus, 'default' | 'info' | 'primary' | '
   CONTACTED: 'primary',
   NOT_REACHABLE: 'warning',
   INTERESTED: 'success',
+  NOT_INTERESTED: 'error',
   FOLLOW_UP: 'warning',
   HOT: 'error',
   WARM: 'warning',
   COLD: 'default',
   CONVERTED: 'success',
+  INVALID: 'default',
   LOST: 'error',
 };
 
@@ -119,6 +126,7 @@ export const LEAD_SOURCE_CHANNELS = [
   { value: 'POST_SHOW_DOWNLOAD', label: 'Post Show' },
   { value: 'GOOGLE', label: 'Google' },
   { value: 'LINKEDIN', label: 'LinkedIn' },
+  { value: 'META', label: 'Meta' },
 ] as const;
 
 // Pretty label for an UPPER_SNAKE enum value, e.g. SOCIAL_MEDIA -> "Social Media".
@@ -143,20 +151,20 @@ export interface NavItem {
   path: string;
   icon: SvgIconComponent;
   permission?: string; // required permission key (omitted = any authenticated)
+  maxLevel?: number; // only visible to users at or above this role level (1 = Super Admin, 2 = Head, …)
 }
 
 // Sidebar menu — items are filtered by the user's permission set at render time.
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon, permission: 'dashboard.view' },
-  { label: 'Lead Management', path: '/leads', icon: GroupsIcon, permission: 'lead.view' },
-  { label: 'Add Lead', path: '/leads/new', icon: PersonAddAlt1Icon, permission: 'lead.create' },
+  { label: 'Lead Management', path: '/leads', icon: GroupsIcon, permission: 'lead.view', maxLevel: 2 },
   { label: 'Assigned Leads', path: '/leads/assigned', icon: AssignmentIndIcon, permission: 'lead.view' },
-  { label: 'Other Leads', path: '/other-leads', icon: GroupWorkIcon, permission: 'lead.view' },
   { label: 'Followups', path: '/followups', icon: EventNoteIcon, permission: 'lead.view' },
   { label: 'Historical Data', path: '/historical', icon: HistoryIcon, permission: 'historical.view' },
-  { label: 'Reports', path: '/reports', icon: AssessmentIcon, permission: 'report.export' },
+  { label: 'Brochure Data', path: '/other-leads', icon: GroupWorkIcon, permission: 'lead.view' },
+  { label: 'Add Lead', path: '/leads/new', icon: PersonAddAlt1Icon, permission: 'lead.create' },
   { label: 'Analytics', path: '/analytics', icon: InsightsIcon, permission: 'analytics.view' },
   { label: 'Users', path: '/users', icon: PeopleIcon, permission: 'user.view' },
   { label: 'Roles', path: '/roles', icon: SecurityIcon, permission: 'role.manage' },
-  { label: 'Settings', path: '/settings', icon: SettingsIcon },
+  { label: 'Settings', path: '/settings', icon: SettingsIcon, maxLevel: 1 },
 ];

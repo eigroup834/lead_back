@@ -26,15 +26,13 @@ import {
 export default function AnalyticsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [eventName, setEventName] = useState('');
-  const [country, setCountry] = useState('');
   const [userId, setUserId] = useState('');
 
   const filter: DashFilter = useMemo(
-    () => ({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, eventName: eventName || undefined, country: country || undefined, userId: userId || undefined }),
-    [dateFrom, dateTo, eventName, country, userId],
+    () => ({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, userId: userId || undefined }),
+    [dateFrom, dateTo, userId],
   );
-  const hasFilter = !!(dateFrom || dateTo || eventName || country || userId);
+  const hasFilter = !!(dateFrom || dateTo || userId);
 
   const { data: refs } = useDashFiltersQuery();
   const { data: summary, isFetching: sLoading } = useSummaryQuery(filter);
@@ -47,7 +45,7 @@ export default function AnalyticsPage() {
   const monthlyData = (monthly?.data ?? []).map((m) => ({ ...m, label: new Date(m.month).toLocaleDateString(undefined, { month: 'short', year: '2-digit' }) }));
   const teamChart = teamRows.slice(0, 10).map((t) => ({ name: t.name.split(' ')[0], Assigned: t.assigned, Converted: t.converted, Calls: t.calls }));
 
-  const clear = () => { setDateFrom(''); setDateTo(''); setEventName(''); setCountry(''); setUserId(''); };
+  const clear = () => { setDateFrom(''); setDateTo(''); setUserId(''); };
 
   return (
     <Box>
@@ -61,25 +59,11 @@ export default function AnalyticsPage() {
         <Toolbar sx={{ gap: 1.5, flexWrap: 'wrap', py: 2 }}>
           <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} sx={{ width: 160 }} />
           <TextField size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} sx={{ width: 160 }} />
-          <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Event</InputLabel>
-            <Select label="Event" value={eventName} onChange={(e) => setEventName(e.target.value)}>
-              <MenuItem value="">All events</MenuItem>
-              {(refs?.data.events ?? []).map((ev) => <MenuItem key={ev} value={ev}>{ev}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Country</InputLabel>
-            <Select label="Country" value={country} onChange={(e) => setCountry(e.target.value)}>
-              <MenuItem value="">All countries</MenuItem>
-              {(refs?.data.countries ?? []).map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-            </Select>
-          </FormControl>
           <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Individual</InputLabel>
-            <Select label="Individual" value={userId} onChange={(e) => setUserId(e.target.value)}>
+            <InputLabel>Team member</InputLabel>
+            <Select label="Team member" value={userId} onChange={(e) => setUserId(e.target.value)}>
               <MenuItem value="">All members</MenuItem>
-              {(refs?.data.members ?? []).map((m) => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
+              {[...(refs?.data.members ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((m) => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
             </Select>
           </FormControl>
           {hasFilter && <Button color="inherit" size="small" startIcon={<ClearIcon />} onClick={clear}>Clear</Button>}

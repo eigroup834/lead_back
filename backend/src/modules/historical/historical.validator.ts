@@ -90,6 +90,9 @@ export const listHistoricalLeadsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   q: z.string().trim().max(120).optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
+  assigneeId: z.string().uuid().optional(), // managers: filter by team member
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
 });
 export type ListHistoricalLeadsQuery = z.infer<typeof listHistoricalLeadsQuery>;
 
@@ -98,3 +101,47 @@ export const restoreHistoricalSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(5000),
 });
 export type RestoreHistoricalInput = z.infer<typeof restoreHistoricalSchema>;
+
+// Manually add a historical lead (from the Add Lead page).
+export const createHistoricalLeadSchema = z
+  .object({
+    company: z.string().trim().max(200).optional(),
+    name: z.string().trim().max(200).optional(),
+    designation: z.string().trim().max(150).optional(),
+    email: z.string().email().optional().or(z.literal('')),
+    mobile: z.string().trim().max(40).optional(),
+    city: z.string().trim().max(100).optional(),
+    country: z.string().trim().max(100).optional(),
+    eventName: z.string().trim().max(200).optional(),
+    eventYear: z.coerce.number().int().min(2000).max(2100).optional(),
+    assignedUserId: z.string().uuid().optional(),
+  })
+  .refine((d) => Boolean(d.company || d.name || d.email || d.mobile), {
+    message: 'Provide at least a company, name, email, or mobile',
+  });
+export type CreateHistoricalLeadInput = z.infer<typeof createHistoricalLeadSchema>;
+
+// Edit any field on a historical lead. All optional; only provided fields change.
+const exhHistoryEntry = z.object({
+  year: z.coerce.number().int().min(1900).max(2100),
+  sqm_spo: z.string().trim().max(200),
+});
+export const updateHistoricalLeadSchema = z.object({
+  company: z.string().trim().max(200).nullable().optional(),
+  name: z.string().trim().max(200).nullable().optional(),
+  designation: z.string().trim().max(150).nullable().optional(),
+  email: z.string().trim().max(200).nullable().optional(),
+  mobile: z.string().trim().max(40).nullable().optional(),
+  city: z.string().trim().max(100).nullable().optional(),
+  country: z.string().trim().max(100).nullable().optional(),
+  eventName: z.string().trim().max(200).nullable().optional(),
+  eventYear: z.coerce.number().int().min(2000).max(2100).nullable().optional(),
+  industry: z.string().trim().max(150).nullable().optional(),
+  branchOffice: z.string().trim().max(150).nullable().optional(),
+  remark: z.string().trim().max(4000).nullable().optional(),
+  specialRemarks: z.string().trim().max(4000).nullable().optional(),
+  spaceSqm: z.string().trim().max(100).nullable().optional(),
+  assignedUserId: z.string().uuid().nullable().optional(),
+  exhHistory: z.array(exhHistoryEntry).max(50).optional(),
+});
+export type UpdateHistoricalLeadInput = z.infer<typeof updateHistoricalLeadSchema>;

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { startOfDay, endOfDay } from 'date-fns';
 import { prisma } from '@config/prisma';
 import type { AuthUser } from '@/types';
 import type { ListLeadsQuery } from './leads.validator';
@@ -26,13 +27,18 @@ function filterWhere(q: ListLeadsQuery): Prisma.LeadWhereInput {
   if (q.eventName) where.eventName = q.eventName;
   if (q.country) where.country = q.country;
   if (q.sourceChannel) where.sourceChannel = q.sourceChannel;
+  if (q.source) where.source = q.source;
   if (q.unassigned) where.assignedUserId = null;
   else if (q.assignedUserId) where.assignedUserId = q.assignedUserId;
   else if (q.assigned) where.assignedUserId = { not: null };
   if (q.dateFrom || q.dateTo) {
-    where.createDate = {};
-    if (q.dateFrom) (where.createDate as Prisma.DateTimeFilter).gte = q.dateFrom;
-    if (q.dateTo) (where.createDate as Prisma.DateTimeFilter).lte = q.dateTo;
+    // On the Assigned Leads page, filter by assignment date; otherwise by the
+    // lead's registration date.
+    const range: Prisma.DateTimeFilter = {};
+    if (q.dateFrom) range.gte = startOfDay(q.dateFrom);
+    if (q.dateTo) range.lte = endOfDay(q.dateTo);
+    if (q.assigned) where.assignedAt = range;
+    else where.createDate = range;
   }
   if (q.q) {
     where.OR = [

@@ -54,17 +54,17 @@ const schema = z.object({
   SYNC_CRON: z.string().default('*/5 * * * *'), // legacy (BullMQ); unused by the in-process scheduler
   SYNC_BATCH_SIZE: z.coerce.number().default(500),
 
-  // ---- SMS (follow-up reminders to the assigned rep) ----
-  // Fill SMS_API_URL/KEY/SECRET from the SMS panel. While SMS_ENABLED=false the
-  // reminder job still runs and logs what it *would* send (safe dry-run).
+  // ---- SMS (SmartPing / SPARC — follow-up reminders to the assigned rep) ----
+  // Set SMS_USERNAME + SMS_PASSWORD in .env and SMS_ENABLED=true to go live.
+  // While SMS_ENABLED=false the reminder job still runs and logs a dry-run.
   SMS_ENABLED: z.coerce.boolean().default(false),
-  SMS_API_URL: z.string().url().optional(),
-  SMS_API_KEY: z.string().default(''),
-  SMS_API_SECRET: z.string().default(''),
-  SMS_SENDER_ID: z.string().default(''),
-  // Indian DLT compliance ids — required by most Indian SMS panels.
-  SMS_ENTITY_ID: z.string().default(''),
-  SMS_TEMPLATE_ID: z.string().default(''),
+  SMS_API_URL: z.string().url().default('https://pgapi.sparc.smartping.io/fe/api/v1/send'),
+  SMS_USERNAME: z.string().default(''),      // e.g. eitra01.trans
+  SMS_PASSWORD: z.string().default(''),       // panel password (secret — .env only)
+  SMS_SENDER_ID: z.string().default('EXHIGR'), // approved header/from
+  // DLT (TRAI) compliance ids tied to the approved template.
+  SMS_DLT_CONTENT_ID: z.string().default('1777178462705937936'),
+  SMS_DLT_ENTITY_ID: z.string().default('1301161355478774851'),
   SMS_TIMEOUT_MS: z.coerce.number().default(15_000),
   // Default country code applied to 10-digit local numbers.
   SMS_DEFAULT_COUNTRY_CODE: z.string().default('91'),
@@ -73,8 +73,10 @@ const schema = z.object({
   FOLLOWUP_REMINDER_ENABLED: z.coerce.boolean().default(true),
   // How often the in-process scheduler scans for due reminders (ms).
   FOLLOWUP_REMINDER_INTERVAL_MS: z.coerce.number().default(300_000), // 5 min
-  // Send the reminder this many minutes before the follow-up time (IST).
-  FOLLOWUP_REMINDER_LEAD_MINUTES: z.coerce.number().default(30),
+  // The "just before" reminder fires this many minutes before the follow-up time (IST).
+  FOLLOWUP_REMINDER_LEAD_MINUTES: z.coerce.number().default(10),
+  // The day-of reminder fires at this IST time on the follow-up date.
+  FOLLOWUP_DAY_REMINDER_TIME: z.string().regex(/^\d{2}:\d{2}$/).default('09:00'),
   // Time (IST, HH:mm) assumed when a follow-up has a date but no time.
   FOLLOWUP_REMINDER_DEFAULT_TIME: z.string().regex(/^\d{2}:\d{2}$/).default('10:00'),
 

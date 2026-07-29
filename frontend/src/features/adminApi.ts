@@ -57,6 +57,10 @@ export const adminApi = api.injectEndpoints({
       query: (params) => ({ url: '/followups', params }),
       providesTags: ['Followup'],
     }),
+    followupCounts: build.query<ApiEnvelope<{ overdue: number; today: number; upcoming: number; all: number }>, { assigneeId?: string } | void>({
+      query: (params) => ({ url: '/followups/counts', params: params || {} }),
+      providesTags: ['Followup'],
+    }),
     updateFollowup: build.mutation<ApiEnvelope<unknown>, { id: string; status?: string; followupDate?: string; followupTime?: string; priority?: string; note?: string }>({
       query: ({ id, ...body }) => ({ url: `/followups/${id}`, method: 'PATCH', body }),
       invalidatesTags: ['Followup'],
@@ -120,6 +124,7 @@ export const adminApi = api.injectEndpoints({
 
 export const {
   useListFollowupsQuery,
+  useFollowupCountsQuery,
   useUpdateFollowupMutation,
   useListUsersQuery,
   useCreateUserMutation,

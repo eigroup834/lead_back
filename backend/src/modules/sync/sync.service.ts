@@ -118,6 +118,36 @@ function mapDownloadToExternal(r: DownloadSourceRow, category: ExternalCategory)
   };
 }
 
+// Drop a row only when BOTH its email AND mobile match the same existing lead
+// (or an earlier row in the same batch). Rows missing either field can't be a
+// both-match duplicate, so they always pass through.
+async function dropExistingByContact<T extends { email?: string | null; mobile?: string | null }>(rows: T[]): Promise<T[]> {
+  const key = (e: string, m: string) => `${e.trim().toLowerCase()}|||${m.trim()}`;
+  const withBoth = rows.filter((r) => r.email && r.mobile);
+  if (withBoth.length === 0) return rows;
+
+  // Fetch by email (indexed); the pair check narrows it to exact email+mobile matches.
+  const emails = [...new Set(withBoth.map((r) => r.email as string))];
+  const existing = await prisma.lead.findMany({
+    where: { deletedAt: null, email: { in: emails } },
+    select: { email: true, mobile: true },
+  });
+  const seen = new Set(
+    existing.filter((e) => e.email && e.mobile).map((e) => key(e.email!, e.mobile!)),
+  );
+
+  const out: T[] = [];
+  for (const r of rows) {
+    if (r.email && r.mobile) {
+      const k = key(r.email, r.mobile);
+      if (seen.has(k)) continue;  // both match → skip
+      seen.add(k);                // prevent an in-batch pair duplicate too
+    }
+    out.push(r);
+  }
+  return out;
+}
+
 export const syncService = {
   // Idempotent, resumable, batched import. Returns the run summary.
   async runOnce(): Promise<{ fetched: number; inserted: number; skipped: number }> {
@@ -142,9 +172,10 @@ export const syncService = {
         return { fetched: 0, inserted: 0, skipped: 0 };
       }
 
-      // De-dup via unique sourceId; skipDuplicates makes re-runs safe.
+      // De-dup via unique sourceId (skipDuplicates) AND by existing email/mobile.
+      const toInsert = await dropExistingByContact(rows.map(mapRow));
       const created = await prisma.lead.createMany({
-        data: rows.map(mapRow),
+        data: toInsert,
         skipDuplicates: true,
       });
 
@@ -231,8 +262,9 @@ export const syncService = {
         else externalRows.push(mapDownloadToExternal(r, kind));
       }
 
+      const leadToInsert = await dropExistingByContact(leadRows);
       const [leadRes, externalRes] = await prisma.$transaction([
-        prisma.lead.createMany({ data: leadRows, skipDuplicates: true }),
+        prisma.lead.createMany({ data: leadToInsert, skipDuplicates: true }),
         prisma.externalLead.createMany({ data: externalRows, skipDuplicates: true }),
       ]);
 

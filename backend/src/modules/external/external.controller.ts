@@ -5,13 +5,28 @@ import type { ListExternalQuery } from './external.validator';
 
 export const externalController = {
   async list(req: Request, res: Response) {
-    const { items, meta } = await externalService.list(req.query as unknown as ListExternalQuery);
+    const { items, meta } = await externalService.list(req.user!, req.query as unknown as ListExternalQuery);
     return ok(res, items, meta);
   },
 
-  async counts(_req: Request, res: Response) {
-    const counts = await externalService.counts();
+  async counts(req: Request, res: Response) {
+    const counts = await externalService.counts(req.user!);
     return ok(res, counts);
+  },
+
+  async assign(req: Request, res: Response) {
+    const result = await externalService.assign(req.body.ids, req.body.assignToId);
+    return ok(res, result);
+  },
+
+  async sync(req: Request, res: Response) {
+    const result = await externalService.sync(req.body.ids);
+    return ok(res, result);
+  },
+
+  async reclassify(req: Request, res: Response) {
+    const lead = await externalService.reclassify(req.params.id, req.body.category);
+    return ok(res, lead);
   },
 
   async convertToExhibitor(req: Request, res: Response) {

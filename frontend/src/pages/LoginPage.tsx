@@ -6,6 +6,7 @@ import { Box, Button, Card, CardContent, Stack, TextField, Typography, Alert } f
 import { useLoginMutation } from '@/features/auth/authApi';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { setCredentials } from '@/features/auth/authSlice';
+import { api } from '@/app/api';
 import { GRADIENTS } from '@/theme';
 
 const schema = z.object({ email: z.string().email(), password: z.string().min(6) });
@@ -29,13 +30,15 @@ export default function LoginPage() {
   })();
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: 'admin@exhibitor.local', password: 'Admin@12345' },
+    defaultValues: { email: '', password: '' },
   });
 
   if (token) return <Navigate to="/dashboard" replace />;
 
   const onSubmit = async (values: FormValues) => {
     const res = await login(values).unwrap();
+    // Clear any cache from a previous session before this user's data loads.
+    dispatch(api.util.resetApiState());
     dispatch(setCredentials({ accessToken: res.data.accessToken, user: res.data.user }));
     const to = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard';
     navigate(to, { replace: true });

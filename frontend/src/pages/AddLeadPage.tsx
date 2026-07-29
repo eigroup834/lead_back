@@ -2,21 +2,21 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Button, Card, CardContent, CardHeader, Grid, MenuItem, Stack, TextField,
-  Typography, Snackbar, Alert,
+  Typography, Snackbar, Alert, FormControl, InputLabel, Select, ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import {
-  LEAD_SOURCES, LEAD_TYPES, LEAD_STATUSES, PRIORITIES, EXTERNAL_LEAD_TYPES,
-  prettyLabel, sentenceCase,
-} from '@/constants';
-import { useCreateLeadMutation } from '@/features/leads/leadsApi';
+import { LEAD_SOURCES, PRIORITIES, prettyLabel } from '@/constants';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
+import { useCreateHistoricalLeadMutation } from '@/features/historical/historicalApi';
+import { useListUsersQuery } from '@/features/adminApi';
 
 const empty = {
   // classification
-  source: 'MANUAL', leadType: '', status: 'NEW', priority: 'MEDIUM',
+  source: 'MANUAL', leadType: 'EXHIBITION', status: 'NEW', priority: 'MEDIUM',
   // contact
-  title: '', firstName: '', lastName: '', designation: '', email: '', mobile: '', phone: '',
+  title: '', firstName: '', lastName: '', designation: '', email: '', mobile: '',
   // company / participation
   company: '', shellSpace: '', rawSpace: '', website: '', learnAbout: '',
   // address
@@ -26,6 +26,20 @@ const empty = {
 };
 
 type Form = typeof empty;
+
+// Basic client-side validation.
+const NAME_RE = /^[A-Za-z\s.'-]+$/;             // alphabetic (+ common name punctuation)
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MOBILE_RE = /^[+]?[\d\s-]{7,20}$/;         // digits (optional +, spaces, dashes)
+
+function validate(form: Form) {
+  return {
+    firstName: form.firstName && !NAME_RE.test(form.firstName) ? 'Letters only' : '',
+    lastName: form.lastName && !NAME_RE.test(form.lastName) ? 'Letters only' : '',
+    email: form.email && !EMAIL_RE.test(form.email) ? 'Enter a valid email' : '',
+    mobile: form.mobile && !MOBILE_RE.test(form.mobile) ? 'Digits only' : '',
+  };
+}
 
 function serverError(error: unknown): string {
   const data = (error as { data?: { error?: { message?: string; details?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] } } } })?.data;
@@ -42,13 +56,41 @@ function serverError(error: unknown): string {
 
 export default function AddLeadPage() {
   const navigate = useNavigate();
+  const { has } = usePermissions();
+  const canAssign = has('lead.assign');
   const [form, setForm] = useState<Form>(empty);
+  const [destination, setDestination] = useState<'LEAD' | 'HISTORICAL'>('LEAD');
+  const [assignTo, setAssignTo] = useState('');
   const [createLead, { isLoading, error }] = useCreateLeadMutation();
+  const [createHistorical, { isLoading: savingHist }] = useCreateHistoricalLeadMutation();
+  const [assignSingle] = useAssignSingleMutation();
+  const { data: users } = useListUsersQuery(undefined, { skip: !canAssign });
   const [toast, setToast] = useState<string | null>(null);
 
+  const members = [...(users?.data ?? [])]
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+
   const set = (k: keyof Form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const errors = validate(form);
+  const hasErrors = Object.values(errors).some(Boolean);
 
   const submit = async () => {
+    if (destination === 'HISTORICAL') {
+      await createHistorical({
+        company: form.company || undefined,
+        name: [form.firstName, form.lastName].filter(Boolean).join(' ') || undefined,
+        designation: form.designation || undefined,
+        email: form.email || undefined,
+        mobile: form.mobile || undefined,
+        city: form.city || undefined,
+        country: form.country || undefined,
+        assignedUserId: assignTo || undefined,
+      }).unwrap();
+      setToast('Added to Historical Data');
+      setTimeout(() => navigate('/historical'), 700);
+      return;
+    }
+
     // Send classification fields always; drop empty optional text fields.
     const payload: Record<string, unknown> = {
       source: form.source, status: form.status, priority: form.priority,
@@ -64,10 +106,14 @@ export default function AddLeadPage() {
     if (res.meta?.external) {
       setToast(`${prettyLabel(form.leadType || 'Visitor')} lead saved to the external list`);
       setTimeout(() => navigate('/leads'), 900);
-    } else {
-      setToast('Lead added');
-      setTimeout(() => navigate(`/leads/${res.data.id}`), 600);
+      return;
     }
+    // Optionally assign to a member on creation → lands in that member's Assigned Leads.
+    if (assignTo) {
+      try { await assignSingle({ leadId: res.data.id, assignToId: assignTo }).unwrap(); } catch { /* non-fatal */ }
+    }
+    setToast('Lead added');
+    setTimeout(() => navigate(`/leads/${res.data.id}`), 600);
   };
 
   return (
@@ -80,7 +126,37 @@ export default function AddLeadPage() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{serverError(error)}</Alert>}
 
       <Stack spacing={2.5}>
-        {/* Classification */}
+        {/* Destination + assignment */}
+        <Card>
+          <CardContent>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>Add to</Typography>
+                <ToggleButtonGroup
+                  size="small" exclusive color="primary" value={destination}
+                  onChange={(_e, v) => v && setDestination(v)}
+                >
+                  <ToggleButton value="LEAD">Lead Management</ToggleButton>
+                  <ToggleButton value="HISTORICAL">Historical Data</ToggleButton>
+                </ToggleButtonGroup>
+              </Grid>
+              {canAssign && (
+                <Grid item xs={12} sm={6}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Assign to (optional)</InputLabel>
+                    <Select label="Assign to (optional)" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
+                      <MenuItem value=""><em>Unassigned</em></MenuItem>
+                      {members.map((u) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
+            </Grid>
+          </CardContent>
+        </Card>
+
+        {/* Classification — only relevant for Lead Management */}
+        {destination === 'LEAD' && (
         <Card>
           <CardContent>
             <Grid container spacing={2}>
@@ -90,18 +166,12 @@ export default function AddLeadPage() {
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={3}>
-                <TextField
-                  size="small" select fullWidth label="Lead type" value={form.leadType} onChange={set('leadType')}
-                  helperText={(EXTERNAL_LEAD_TYPES as readonly string[]).includes(form.leadType) ? 'Saved to external list (local CRM)' : ' '}
-                >
-                  <MenuItem value="">—</MenuItem>
-                  {LEAD_TYPES.map((t) => <MenuItem key={t} value={t}>{prettyLabel(t)}</MenuItem>)}
-                </TextField>
+                {/* Manually added leads are always Exhibitor leads. */}
+                <TextField size="small" fullWidth label="Lead type" value="Exhibitor" disabled />
               </Grid>
               <Grid item xs={12} sm={3}>
-                <TextField size="small" select fullWidth label="Status" value={form.status} onChange={set('status')}>
-                  {LEAD_STATUSES.map((s) => <MenuItem key={s} value={s}>{sentenceCase(s)}</MenuItem>)}
-                </TextField>
+                {/* New leads always start as New; status changes later on the lead page. */}
+                <TextField size="small" fullWidth label="Status" value="New" disabled helperText="New leads start as New" />
               </Grid>
               <Grid item xs={12} sm={3}>
                 <TextField size="small" select fullWidth label="Priority" value={form.priority} onChange={set('priority')}>
@@ -111,6 +181,7 @@ export default function AddLeadPage() {
             </Grid>
           </CardContent>
         </Card>
+        )}
 
         {/* Contact */}
         <Card>
@@ -118,12 +189,11 @@ export default function AddLeadPage() {
           <CardContent>
             <Grid container spacing={2}>
               <Grid item xs={6} sm={2}><TextField size="small" fullWidth label="Title" value={form.title} onChange={set('title')} /></Grid>
-              <Grid item xs={6} sm={5}><TextField size="small" fullWidth label="First name" value={form.firstName} onChange={set('firstName')} /></Grid>
-              <Grid item xs={12} sm={5}><TextField size="small" fullWidth label="Last name" value={form.lastName} onChange={set('lastName')} /></Grid>
-              <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Designation" value={form.designation} onChange={set('designation')} /></Grid>
-              <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Email" type="email" value={form.email} onChange={set('email')} /></Grid>
-              <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Mobile" value={form.mobile} onChange={set('mobile')} /></Grid>
-              <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Phone" value={form.phone} onChange={set('phone')} /></Grid>
+              <Grid item xs={6} sm={5}><TextField size="small" fullWidth label="First name" value={form.firstName} onChange={set('firstName')} error={!!errors.firstName} helperText={errors.firstName} /></Grid>
+              <Grid item xs={12} sm={5}><TextField size="small" fullWidth label="Last name" value={form.lastName} onChange={set('lastName')} error={!!errors.lastName} helperText={errors.lastName} /></Grid>
+              <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Designation" value={form.designation} onChange={set('designation')} /></Grid>
+              <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Email" type="email" value={form.email} onChange={set('email')} error={!!errors.email} helperText={errors.email} /></Grid>
+              <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Mobile" value={form.mobile} onChange={set('mobile')} error={!!errors.mobile} helperText={errors.mobile} /></Grid>
             </Grid>
           </CardContent>
         </Card>
@@ -167,8 +237,8 @@ export default function AddLeadPage() {
         </Card>
 
         <Box>
-          <Button variant="contained" size="large" startIcon={<SaveIcon />} disabled={isLoading} onClick={submit}>
-            {isLoading ? 'Saving…' : 'Save Lead'}
+          <Button variant="contained" size="large" startIcon={<SaveIcon />} disabled={isLoading || savingHist || hasErrors} onClick={submit}>
+            {isLoading || savingHist ? 'Saving…' : destination === 'HISTORICAL' ? 'Save to Historical' : 'Save Lead'}
           </Button>
         </Box>
       </Stack>

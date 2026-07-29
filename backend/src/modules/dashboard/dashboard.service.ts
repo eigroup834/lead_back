@@ -61,7 +61,7 @@ export const dashboardService = {
         prisma.lead.groupBy({ by: ['country'], where: { deletedAt: null, country: { not: null } }, _count: { _all: true }, orderBy: { _count: { id: 'desc' } } }),
         prisma.team.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
         prisma.user.findMany({
-          where: { deletedAt: null, roles: { some: { role: { name: { in: ['TEAM_LEADER', 'SALES_EXECUTIVE'] } } } } },
+          where: { deletedAt: null }, // all members, incl. Super Admin & Head
           select: { id: true, firstName: true, lastName: true },
           orderBy: [{ firstName: 'asc' }],
         }),
@@ -176,7 +176,7 @@ export const dashboardService = {
         where: {
           deletedAt: null,
           ...(f.userId ? { id: f.userId } : f.teamId ? { teamId: f.teamId } : {}),
-          roles: { some: { role: { name: { in: ['TEAM_LEADER', 'SALES_EXECUTIVE'] } } } },
+          // all members, incl. Super Admin & Head
         },
         select: { id: true, firstName: true, lastName: true },
       });

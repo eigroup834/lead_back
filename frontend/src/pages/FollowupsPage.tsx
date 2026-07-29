@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
@@ -16,7 +16,7 @@ import StatusChip from '@/components/StatusChip';
 import { LEAD_STATUSES, FOLLOWUP_SCOPES, PRIORITY_COLOR, sentenceCase } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
-  useListFollowupsQuery, useUpdateFollowupMutation, useListUsersQuery, type FollowupRow,
+  useListFollowupsQuery, useFollowupCountsQuery, useUpdateFollowupMutation, useListUsersQuery, type FollowupRow,
 } from '@/features/adminApi';
 import { useChangeStatusMutation } from '@/features/leads/leadsApi';
 
@@ -31,6 +31,7 @@ export default function FollowupsPage() {
   const [scope, setScope] = useState('today');
   const [assigneeId, setAssigneeId] = useState('');
   const { data, isFetching } = useListFollowupsQuery({ scope, assigneeId: assigneeId || undefined });
+  const { data: countsData } = useFollowupCountsQuery({ assigneeId: assigneeId || undefined });
   const { data: users } = useListUsersQuery(undefined, { skip: !isManager });
 
   const [update] = useUpdateFollowupMutation();
@@ -42,11 +43,17 @@ export default function FollowupsPage() {
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
 
   const rows = data?.data ?? [];
-  const assignableUsers = users?.data ?? [];
+  const assignableUsers = [...(users?.data ?? [])]
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
-  const counts = useMemo(() => ({
-    overdue: rows.filter((r) => isOverdue(r.followupDate)).length,
-  }), [rows]);
+  const counts: Record<string, number> = countsData?.data ?? { overdue: 0, today: 0, upcoming: 0, all: 0 };
+
+  // Reschedule may be today or later; if today, time can't be earlier than now.
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const nowD = new Date();
+  const todayStr = `${nowD.getFullYear()}-${pad2(nowD.getMonth() + 1)}-${pad2(nowD.getDate())}`;
+  const nowTimeStr = `${pad2(nowD.getHours())}:${pad2(nowD.getMinutes())}`;
+  const reTimeInvalid = reschedule?.date === todayStr && !!reschedule?.time && reschedule.time < nowTimeStr;
 
   const markDone = async (row: FollowupRow) => {
     try { await update({ id: row.id, status: 'DONE' }).unwrap(); setToast({ msg: 'Follow-up marked done', sev: 'success' }); }
@@ -88,7 +95,7 @@ export default function FollowupsPage() {
           <FormControl size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Team member</InputLabel>
             <Select label="Team member" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-              <MenuItem value="">Everyone</MenuItem>
+              <MenuItem value="">All members</MenuItem>
               {assignableUsers.map((u) => (
                 <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
               ))}
@@ -110,9 +117,12 @@ export default function FollowupsPage() {
                 sx={{ borderRadius: 5 }}
               >
                 {s.label}
-                {s.key === 'overdue' && counts.overdue > 0 && scope !== 'overdue' && (
-                  <Chip size="small" color="error" label={counts.overdue} sx={{ ml: 0.75, height: 18, '& .MuiChip-label': { px: 0.75 } }} />
-                )}
+                <Chip
+                  size="small"
+                  color={s.key === 'overdue' ? 'error' : scope === s.key ? 'default' : 'primary'}
+                  label={counts[s.key] ?? 0}
+                  sx={{ ml: 0.75, height: 18, '& .MuiChip-label': { px: 0.75 } }}
+                />
               </Button>
             ))}
           </Stack>
@@ -241,18 +251,21 @@ export default function FollowupsPage() {
           <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
             <TextField
               type="date" fullWidth label="New follow-up date" InputLabelProps={{ shrink: true }}
+              inputProps={{ min: todayStr }}
               value={reschedule?.date ?? ''} onChange={(e) => setReschedule((r) => (r ? { ...r, date: e.target.value } : r))}
             />
             <TextField
               type="time" fullWidth label="Time (IST)" InputLabelProps={{ shrink: true }}
+              inputProps={{ min: reschedule?.date === todayStr ? nowTimeStr : undefined }}
               value={reschedule?.time ?? ''} onChange={(e) => setReschedule((r) => (r ? { ...r, time: e.target.value } : r))}
-              helperText="SMS reminder is sent to the assignee"
+              error={reTimeInvalid}
+              helperText={reTimeInvalid ? 'Time is in the past' : 'SMS reminder is sent to the assignee'}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setReschedule(null)}>Cancel</Button>
-          <Button variant="contained" disabled={!reschedule?.date} onClick={doReschedule}>Reschedule</Button>
+          <Button variant="contained" disabled={!reschedule?.date || reTimeInvalid} onClick={doReschedule}>Reschedule</Button>
         </DialogActions>
       </Dialog>
 

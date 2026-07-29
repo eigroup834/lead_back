@@ -51,7 +51,7 @@ export const historicalController = {
   // -------- Historical leads (year-tagged archive) --------
 
   async listLeads(req: Request, res: Response) {
-    const { items, meta } = await historicalService.listLeads(req.query as unknown as ListHistoricalLeadsQuery);
+    const { items, meta } = await historicalService.listLeads(req.user!, req.query as unknown as ListHistoricalLeadsQuery);
     return ok(res, items, meta);
   },
 
@@ -61,12 +61,22 @@ export const historicalController = {
   },
 
   async restore(req: Request, res: Response) {
-    const result = await historicalService.restore(req.body);
+    const result = await historicalService.restore(req.user!.id, req.body);
     return ok(res, result);
   },
 
   async removeLead(req: Request, res: Response) {
     const result = await historicalService.removeLead(req.params.id);
     return ok(res, result);
+  },
+
+  async createLead(req: Request, res: Response) {
+    const lead = await historicalService.createLead(req.body);
+    return created(res, lead);
+  },
+
+  async updateLead(req: Request, res: Response) {
+    const lead = await historicalService.updateLead(req.params.id, req.body);
+    return ok(res, lead);
   },
 };

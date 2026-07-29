@@ -10,9 +10,9 @@ export function RequireAuth({ children }: { children: JSX.Element }) {
   return children;
 }
 
-export function RequirePermission({ permission, children }: { permission?: string; children: JSX.Element }) {
-  const { has } = usePermissions();
-  if (!has(permission)) {
+export function RequirePermission({ permission, maxLevel, children }: { permission?: string; maxLevel?: number; children: JSX.Element }) {
+  const { has, level } = usePermissions();
+  if (!has(permission) || (maxLevel !== undefined && level > maxLevel)) {
     return (
       <Box sx={{ p: 6, textAlign: 'center' }}>
         <Typography variant="h5" gutterBottom>403 — Forbidden</Typography>

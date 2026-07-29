@@ -8,10 +8,12 @@ import {
   convertBulkSchema,
   convertRowSchema,
   createUploadSchema,
+  createHistoricalLeadSchema,
   idParam,
   listHistoricalLeadsQuery,
   listRowsQuery,
   restoreHistoricalSchema,
+  updateHistoricalLeadSchema,
   updateUploadSchema,
   uploadRowParams,
 } from './historical.validator';
@@ -22,8 +24,10 @@ router.use(authenticate);
 // Historical leads: year-tagged archive of converted leads (moved from Lead
 // Management). Declared before the legacy /uploads routes; no path overlap.
 router.get('/leads', requirePermission('historical.view'), validate({ query: listHistoricalLeadsQuery }), asyncHandler(historicalController.listLeads));
+router.post('/leads', requirePermission('lead.create'), validate({ body: createHistoricalLeadSchema }), asyncHandler(historicalController.createLead));
 router.get('/leads/years', requirePermission('historical.view'), asyncHandler(historicalController.years));
 router.post('/leads/restore', requirePermission('lead.create'), validate({ body: restoreHistoricalSchema }), asyncHandler(historicalController.restore));
+router.patch('/leads/:id', requirePermission('lead.edit'), validate({ params: idParam, body: updateHistoricalLeadSchema }), asyncHandler(historicalController.updateLead));
 router.delete('/leads/:id', requirePermission('lead.edit'), validate({ params: idParam }), asyncHandler(historicalController.removeLead));
 
 // All endpoints are owner-scoped inside the service (a rep only ever sees/edits

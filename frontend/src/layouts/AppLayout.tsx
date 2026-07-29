@@ -15,6 +15,7 @@ import { useAppDispatch, useAppSelector } from '@/store';
 import { toggleMode, toggleSidebar } from '@/features/ui/uiSlice';
 import { logout } from '@/features/auth/authSlice';
 import { useLogoutMutation } from '@/features/auth/authApi';
+import { api } from '@/app/api';
 import NotificationsBell from '@/components/NotificationsBell';
 
 const FULL = 248;
@@ -24,13 +25,13 @@ export default function AppLayout() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const { has, user } = usePermissions();
+  const { has, user, level } = usePermissions();
   const mode = useAppSelector((s) => s.ui.mode);
   const open = useAppSelector((s) => s.ui.sidebarOpen);
   const [doLogout] = useLogoutMutation();
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
 
-  const items = NAV_ITEMS.filter((i) => has(i.permission));
+  const items = NAV_ITEMS.filter((i) => has(i.permission) && (i.maxLevel === undefined || level <= i.maxLevel));
   const width = open ? FULL : MINI;
 
   const crumbs = location.pathname.split('/').filter(Boolean);
@@ -38,6 +39,7 @@ export default function AppLayout() {
   const handleLogout = async () => {
     try { await doLogout().unwrap(); } catch { /* ignore */ }
     dispatch(logout());
+    dispatch(api.util.resetApiState()); // drop the previous user's cached data
     navigate('/login');
   };
 

@@ -8,29 +8,37 @@ import {
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import StatusChip from '@/components/StatusChip';
 import {
-  LEAD_STATUSES, EXTERNAL_LEAD_TYPES, prettyLabel, sentenceCase, sourceChannelLabel,
+  LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES, prettyLabel, sentenceCase, sourceChannelLabel,
   type ExternalLeadType,
 } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   useGetLeadQuery, useChangeStatusMutation, useAddNoteMutation,
-  useScheduleFollowupMutation, useConvertExternalMutation,
+  useScheduleFollowupMutation, useConvertExternalMutation, useAssignSingleMutation,
 } from '@/features/leads/leadsApi';
+import { useListUsersQuery } from '@/features/adminApi';
 
 export default function LeadDetailsPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const { has } = usePermissions();
-  const { data, isLoading } = useGetLeadQuery(id);
+  const { has, level } = usePermissions();
+  const canAssign = has('lead.assign');
+  const isSuperAdmin = level === 1; // reassign is Super Admin only
+  // Always pull the lead fresh when the page opens — avoids showing a stale
+  // (e.g. not-yet-assigned) copy left in cache from a previous view.
+  const { data, isLoading } = useGetLeadQuery(id, { refetchOnMountOrArgChange: true });
+  const { data: users } = useListUsersQuery(undefined, { skip: !canAssign });
   const [changeStatus, { isLoading: changing }] = useChangeStatusMutation();
   const [addNote, { isLoading: adding }] = useAddNoteMutation();
   const [scheduleFollowup, { isLoading: scheduling }] = useScheduleFollowupMutation();
   const [convertExternal, { isLoading: converting }] = useConvertExternalMutation();
+  const [assignSingle, { isLoading: assigning }] = useAssignSingleMutation();
+  const [assignTo, setAssignTo] = useState('');
   const [status, setStatus] = useState('');
-  const [note, setNote] = useState('');
+  const [remark, setRemark] = useState('');
+  const [sqmSpace, setSqmSpace] = useState('');
   const [fuDate, setFuDate] = useState('');
   const [fuTime, setFuTime] = useState('');
-  const [fuNote, setFuNote] = useState('');
   const [convertType, setConvertType] = useState<ExternalLeadType | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -39,6 +47,26 @@ export default function LeadDetailsPage() {
   if (!lead) return <Typography>Lead not found.</Typography>;
 
   const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || '—';
+  const isAssigned = !!lead.assignedUser;
+
+  // Follow-up may be today or later; if today, the time can't be earlier than now.
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const nowD = new Date();
+  const todayStr = `${nowD.getFullYear()}-${pad2(nowD.getMonth() + 1)}-${pad2(nowD.getDate())}`;
+  const nowTimeStr = `${pad2(nowD.getHours())}:${pad2(nowD.getMinutes())}`;
+  const fuTimeInvalid = fuDate === todayStr && !!fuTime && fuTime < nowTimeStr;
+  const members = [...(users?.data ?? [])]
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+
+  const doAssign = async () => {
+    try {
+      await assignSingle({ leadId: lead.id, assignToId: assignTo }).unwrap();
+      setAssignTo('');
+      setToast('Lead assigned');
+    } catch {
+      setToast('Could not assign lead');
+    }
+  };
 
   return (
     <Box>
@@ -58,7 +86,6 @@ export default function LeadDetailsPage() {
               <Field label="Designation" value={lead.designation} />
               <Field label="Email" value={lead.email} />
               <Field label="Mobile" value={lead.mobile} />
-              <Field label="Phone" value={lead.phone} />
               <Field label="Country" value={lead.country} />
               <Field label="City" value={lead.city} />
               <Field label="Source" value={lead.sourceChannel ? sourceChannelLabel(lead.sourceChannel) : lead.learnAbout} />
@@ -91,44 +118,100 @@ export default function LeadDetailsPage() {
           <Stack spacing={2.5}>
             <Card>
               <CardContent>
-                {has('lead.edit') && (
+                {/* Assignment — a lead must be assigned before its status can change. */}
+                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Assignment</Typography>
+                {isAssigned ? (
+                  <Stack spacing={1} sx={{ mb: 2 }}>
+                    <Chip size="small" color="primary" sx={{ alignSelf: 'flex-start' }} label={`${lead.assignedUser!.firstName} ${lead.assignedUser!.lastName}`} />
+                    {isSuperAdmin && (
+                      <Stack direction="row" spacing={1}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel>Reassign to</InputLabel>
+                          <Select label="Reassign to" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
+                            {members.map((u) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
+                          </Select>
+                        </FormControl>
+                        <Button variant="outlined" size="small" disabled={!assignTo || assigning} onClick={doAssign}>Reassign</Button>
+                      </Stack>
+                    )}
+                  </Stack>
+                ) : canAssign ? (
+                  <Stack spacing={1} sx={{ mb: 2 }}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel>Assign to</InputLabel>
+                      <Select label="Assign to" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
+                        {members.map((u) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                    <Button variant="contained" size="small" disabled={!assignTo || assigning} onClick={doAssign}>Assign</Button>
+                  </Stack>
+                ) : (
+                  <Alert severity="info" sx={{ mb: 2 }}>This lead isn't assigned yet.</Alert>
+                )}
+                <Divider sx={{ mb: 2 }} />
+
+                {has('lead.edit') && !isAssigned && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Assign this lead to a member before updating its status.
+                  </Typography>
+                )}
+                {has('lead.edit') && isAssigned && (
                   <>
                     <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Update Status</Typography>
                     <Stack spacing={1.5} sx={{ mb: 2 }}>
                       <FormControl size="small" fullWidth>
                         <InputLabel>New status</InputLabel>
                         <Select label="New status" value={status} onChange={(e) => setStatus(e.target.value)}>
-                          {LEAD_STATUSES.map((s) => <MenuItem key={s} value={s}>{sentenceCase(s)}</MenuItem>)}
+                          {LEAD_DETAIL_STATUS_OPTIONS.map((s) => <MenuItem key={s} value={s}>{sentenceCase(s)}</MenuItem>)}
                         </Select>
                       </FormControl>
 
-                      {/* Choosing "Follow up" reveals the follow-up fields; Save persists both together. */}
+                      {/* Choosing "Follow up" reveals the follow-up date/time. */}
                       {status === 'FOLLOW_UP' && (
-                        <>
-                          <Stack direction="row" spacing={1}>
-                            <TextField size="small" type="date" label="Follow-up date" InputLabelProps={{ shrink: true }} fullWidth value={fuDate} onChange={(e) => setFuDate(e.target.value)} />
-                            <TextField
-                              size="small" type="time" label="Time (IST)" InputLabelProps={{ shrink: true }} fullWidth
-                              value={fuTime} onChange={(e) => setFuTime(e.target.value)}
-                              helperText="SMS reminder is sent to the assignee"
-                            />
-                          </Stack>
-                          <TextField size="small" fullWidth multiline minRows={2} label="Follow-up remark" placeholder="Remark…" value={fuNote} onChange={(e) => setFuNote(e.target.value)} />
-                        </>
+                        <Stack direction="row" spacing={1}>
+                          <TextField
+                            size="small" type="date" label="Follow-up date" InputLabelProps={{ shrink: true }} fullWidth
+                            value={fuDate} onChange={(e) => setFuDate(e.target.value)}
+                            inputProps={{ min: todayStr }}
+                          />
+                          <TextField
+                            size="small" type="time" label="Time (IST)" InputLabelProps={{ shrink: true }} fullWidth
+                            value={fuTime} onChange={(e) => setFuTime(e.target.value)}
+                            inputProps={{ min: fuDate === todayStr ? nowTimeStr : undefined }}
+                            error={fuTimeInvalid}
+                            helperText={fuTimeInvalid ? 'Time is in the past' : 'SMS reminder is sent to the assignee'}
+                          />
+                        </Stack>
                       )}
+
+                      {/* Space booked — required when converting. */}
+                      {status === 'CONVERTED' && (
+                        <TextField
+                          size="small" fullWidth required label="Sqm / Space"
+                          placeholder="e.g. 54 sqm" value={sqmSpace} onChange={(e) => setSqmSpace(e.target.value)}
+                          error={!sqmSpace} helperText={!sqmSpace ? 'Required to convert' : ' '}
+                        />
+                      )}
+
+                      {/* Remark travels with every status update. */}
+                      <TextField size="small" fullWidth multiline minRows={2} label="Remark" placeholder="Add a remark…" value={remark} onChange={(e) => setRemark(e.target.value)} />
 
                       <Button
                         variant="contained"
-                        disabled={!status || changing || scheduling || (status === 'FOLLOW_UP' && !fuDate)}
+                        disabled={!status || changing || scheduling || adding || (status === 'FOLLOW_UP' && (!fuDate || fuTimeInvalid)) || (status === 'CONVERTED' && !sqmSpace.trim())}
                         onClick={async () => {
-                          await changeStatus({ id, status }).unwrap();
+                          await changeStatus({
+                            id, status, reason: remark || undefined,
+                            sqmSpace: status === 'CONVERTED' ? sqmSpace : undefined,
+                          }).unwrap();
                           if (status === 'FOLLOW_UP') {
                             await scheduleFollowup({
                               id, followupDate: fuDate, followupTime: fuTime || undefined,
-                              priority: 'MEDIUM', note: fuNote || undefined,
+                              priority: 'MEDIUM', note: remark || undefined,
                             }).unwrap();
                           }
-                          setStatus(''); setFuDate(''); setFuTime(''); setFuNote('');
+                          if (remark && has('lead.note')) await addNote({ id, body: remark }).unwrap();
+                          setStatus(''); setFuDate(''); setFuTime(''); setRemark(''); setSqmSpace('');
                         }}
                       >
                         Save
@@ -146,14 +229,8 @@ export default function LeadDetailsPage() {
             </Card>
 
             <Card>
-              <CardHeader title="Remark" />
+              <CardHeader title="Remarks" />
               <CardContent sx={{ pt: 0 }}>
-                {has('lead.note') && (
-                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                    <TextField size="small" fullWidth placeholder="Add a remark…" value={note} onChange={(e) => setNote(e.target.value)} />
-                    <Button variant="contained" disabled={!note || adding} onClick={async () => { await addNote({ id, body: note }).unwrap(); setNote(''); }}>Add</Button>
-                  </Stack>
-                )}
                 <Timeline items={lead.notes.map((n) => ({
                   primary: n.body,
                   secondary: `${new Date(n.createdAt).toLocaleString()}${n.author ? ' · ' + n.author.firstName + ' ' + n.author.lastName : ''}`,
@@ -169,10 +246,13 @@ export default function LeadDetailsPage() {
             <Card>
               <CardHeader title="Status Timeline" />
               <CardContent sx={{ pt: 0 }}>
-                <Timeline items={lead.statusHistory.map((h) => ({
-                  primary: `${h.fromStatus ?? '—'} → ${h.toStatus}`,
-                  secondary: `${new Date(h.createdAt).toLocaleString()}${h.changedBy ? ' · ' + h.changedBy.firstName + ' ' + h.changedBy.lastName : ''}${h.reason ? ' · ' + h.reason : ''}`,
-                }))} empty="No status changes yet" />
+                <Timeline items={lead.statusHistory.map((h) => {
+                  const reason = h.reason && h.reason !== 'Auto on assignment' ? ' · ' + h.reason : '';
+                  return {
+                    primary: `${h.fromStatus ?? '—'} → ${h.toStatus}`,
+                    secondary: `${new Date(h.createdAt).toLocaleString()}${h.changedBy ? ' · ' + h.changedBy.firstName + ' ' + h.changedBy.lastName : ''}${reason}`,
+                  };
+                })} empty="No status changes yet" />
               </CardContent>
             </Card>
 
@@ -180,7 +260,7 @@ export default function LeadDetailsPage() {
               <CardHeader title="Assignment History" />
               <CardContent sx={{ pt: 0 }}>
                 <Timeline items={lead.assignments.map((a) => ({
-                  primary: `${a.type} → ${a.assignedTo ? a.assignedTo.firstName + ' ' + a.assignedTo.lastName : '—'}`,
+                  primary: a.assignedTo ? `${a.assignedTo.firstName} ${a.assignedTo.lastName}` : '—',
                   secondary: `${new Date(a.createdAt).toLocaleString()}${a.assignedBy ? ' · by ' + a.assignedBy.firstName : ''}`,
                 }))} empty="Not assigned yet" />
               </CardContent>

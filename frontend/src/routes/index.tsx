@@ -15,7 +15,6 @@ const OtherLeadsPage = lazy(() => import('@/pages/OtherLeadsPage'));
 const HistoricalPage = lazy(() => import('@/pages/HistoricalPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const RolesPage = lazy(() => import('@/pages/RolesPage'));
-const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 
@@ -41,18 +40,17 @@ export default function AppRoutes() {
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<RequirePermission permission="dashboard.view"><DashboardPage /></RequirePermission>} />
-          <Route path="leads" element={<RequirePermission permission="lead.view"><LeadsPage /></RequirePermission>} />
+          <Route path="leads" element={<RequirePermission permission="lead.view" maxLevel={2}><LeadsPage /></RequirePermission>} />
           <Route path="leads/new" element={<RequirePermission permission="lead.create"><AddLeadPage /></RequirePermission>} />
           <Route path="leads/assigned" element={<RequirePermission permission="lead.view"><LeadsPage assignedOnly /></RequirePermission>} />
           <Route path="leads/:id" element={<RequirePermission permission="lead.view"><LeadDetailsPage /></RequirePermission>} />
           <Route path="followups" element={<RequirePermission permission="lead.view"><FollowupsPage /></RequirePermission>} />
           <Route path="other-leads" element={<RequirePermission permission="lead.view"><OtherLeadsPage /></RequirePermission>} />
           <Route path="historical" element={<RequirePermission permission="historical.view"><HistoricalPage /></RequirePermission>} />
-          <Route path="reports" element={<RequirePermission permission="report.export"><ReportsPage /></RequirePermission>} />
           <Route path="analytics" element={<RequirePermission permission="analytics.view"><AnalyticsPage /></RequirePermission>} />
           <Route path="users" element={<RequirePermission permission="user.view"><UsersPage /></RequirePermission>} />
           <Route path="roles" element={<RequirePermission permission="role.manage"><RolesPage /></RequirePermission>} />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings" element={<RequirePermission maxLevel={1}><SettingsPage /></RequirePermission>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

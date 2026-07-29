@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Button, Card, Checkbox, Chip, IconButton, InputAdornment, Menu, MenuItem, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Toolbar,
-  Tooltip, Typography, Select, FormControl, InputLabel, OutlinedInput, ListItemText, Dialog,
+  Tooltip, Typography, Select, FormControl, InputLabel, Dialog,
   DialogTitle, DialogContent, DialogActions, TablePagination, Snackbar, Alert, Divider, CircularProgress,
   Popover, Badge,
 } from '@mui/material';
@@ -18,7 +18,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import StatusChip from '@/components/StatusChip';
 import {
-  LEAD_STATUSES, LEAD_SOURCE_CHANNELS, EXTERNAL_LEAD_TYPES, ASSIGNABLE_ROLE_LEVELS,
+  LEAD_SOURCE_CHANNELS, LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES,
   prettyLabel, sentenceCase, sourceChannelLabel, type ExternalLeadType,
 } from '@/constants';
 import { useAppSelector } from '@/store';
@@ -46,12 +46,13 @@ const ALL_COLUMNS = [
 
 export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) {
   const navigate = useNavigate();
-  const { has, user } = usePermissions();
+  const { has, user, level } = usePermissions();
+  const isSuperAdmin = level === 1;
 
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
-  const [status, setStatus] = useState<string[]>([]);
   const [sourceChannel, setSourceChannel] = useState('');
+  const [statusFilter, setStatusFilter] = useState(''); // Assigned page only
   const [country, setCountry] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -77,8 +78,12 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
 
   const { data, isFetching, refetch } = useListLeadsQuery({
     page: page + 1, limit: rowsPerPage, q: debounced || undefined,
-    status: status.length ? status : undefined,
-    sourceChannel: sourceChannel || undefined,
+    // Lead Management shows only NEW leads; the Assigned page keeps all statuses
+    // (or a chosen one via the Status filter).
+    status: assignedOnly ? (statusFilter ? [statusFilter] : undefined) : ['NEW'],
+    // 'HISTORICAL' filters the source field; the rest are source channels.
+    sourceChannel: sourceChannel && sourceChannel !== 'HISTORICAL' ? sourceChannel : undefined,
+    source: sourceChannel === 'HISTORICAL' ? 'HISTORICAL' : undefined,
     country: country || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
@@ -86,7 +91,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     assigned: assignedOnly || undefined,
     assignedUserId: assignee || undefined,
     sortBy: 'createdAt', sortDir: 'desc',
-  });
+  }, { refetchOnMountOrArgChange: true });
   const { data: users } = useListUsersQuery(undefined, { skip: !has('lead.assign') });
   const { data: refFilters } = useDashFiltersQuery(undefined, { skip: !has('dashboard.view') });
 
@@ -96,11 +101,15 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const [archiveToHistorical, { isLoading: archiving }] = useArchiveToHistoricalMutation();
 
   const canAssign = has('lead.assign');
+  // Reassigning an already-assigned lead is Super Admin only; initial assign stays for assigners.
+  const canAssignAction = assignedOnly ? isSuperAdmin : canAssign;
   const canEdit = has('lead.edit');
   // Archiving converted leads into Historical. Only meaningful on the main pipeline.
   const canArchive = has('lead.edit') && !assignedOnly;
   const canSelect = canAssign || canArchive; // whether the checkbox column renders
   const showActions = canAssign || canEdit; // whether the row kebab column renders
+  // Leads on the Assigned page already have an assignee, so the action is "Reassign".
+  const assignVerb = assignedOnly ? 'Reassign' : 'Assign';
 
   const leads = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
@@ -111,16 +120,18 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     [leads, selected],
   );
   const visibleCols = ALL_COLUMNS.filter((c) => !hidden[c.key]);
-  const assignableUsers = (users?.data ?? []).filter((u) => u.roles.some((r) => ASSIGNABLE_ROLE_LEVELS.includes(r.role.level)));
+  // Leads can be assigned to any user, regardless of role. Sorted A→Z by name.
+  const assignableUsers = [...(users?.data ?? [])]
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
   const resetPaging = () => setPage(0);
 
-  // Filters split: search + status + source stay inline; the rest live behind the
+  // Filters split: search + source stay inline; the rest live behind the
   // "Filters" button. Badge shows how many of those advanced filters are active.
   const advancedActive = [country, dateFrom, dateTo].filter(Boolean).length;
-  const anyActive = Boolean(status.length || sourceChannel || country || dateFrom || dateTo || assignee || search);
+  const anyActive = Boolean(sourceChannel || statusFilter || country || dateFrom || dateTo || assignee || search);
   const clearAll = () => {
-    setSearch(''); setStatus([]); setSourceChannel(''); setCountry(''); setDateFrom(''); setDateTo(''); setAssignee('');
+    setSearch(''); setSourceChannel(''); setStatusFilter(''); setCountry(''); setDateFrom(''); setDateTo(''); setAssignee('');
     resetPaging();
   };
 
@@ -148,8 +159,10 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     try {
       const params = new URLSearchParams();
       if (debounced) params.set('q', debounced);
-      status.forEach((s) => params.append('status', s));
-      if (sourceChannel) params.set('sourceChannel', sourceChannel);
+      if (!assignedOnly) params.append('status', 'NEW'); // Lead Management = NEW only
+      else if (statusFilter) params.append('status', statusFilter);
+      if (sourceChannel === 'HISTORICAL') params.set('source', 'HISTORICAL');
+      else if (sourceChannel) params.set('sourceChannel', sourceChannel);
       if (country) params.set('country', country);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
@@ -194,9 +207,9 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
         <Typography variant="h5">{assignedOnly ? 'Assigned Leads' : 'Lead Management'}</Typography>
         <Stack direction="row" spacing={1}>
-          {has('lead.assign') && selectedIds.length > 0 && (
+          {canAssignAction && selectedIds.length > 0 && (
             <Button startIcon={<AssignmentIndIcon />} variant="contained" onClick={openBulkAssign}>
-              Assign ({selectedIds.length})
+              {assignVerb} ({selectedIds.length})
             </Button>
           )}
           {canArchive && selectedConverted > 0 && (
@@ -220,34 +233,20 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
             sx={{ minWidth: 240, flex: '1 1 240px', maxWidth: 360 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
           />
-          <FormControl size="small" sx={{ minWidth: 170 }}>
-            <InputLabel>Status</InputLabel>
-            <Select
-              multiple value={status} input={<OutlinedInput label="Status" />}
-              onChange={(e) => { setStatus(typeof e.target.value === 'string' ? [e.target.value] : e.target.value); resetPaging(); }}
-              renderValue={(sel) => (sel as string[]).map(sentenceCase).join(', ')}
-            >
-              {LEAD_STATUSES.map((st) => (
-                <MenuItem key={st} value={st}>
-                  <Checkbox checked={status.includes(st)} size="small" />
-                  <ListItemText primary={sentenceCase(st)} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
           <FormControl size="small" sx={{ minWidth: 190 }}>
             <InputLabel>Source</InputLabel>
             <Select label="Source" value={sourceChannel} onChange={(e) => { setSourceChannel(e.target.value); resetPaging(); }}>
               <MenuItem value="">All sources</MenuItem>
               {LEAD_SOURCE_CHANNELS.map((c) => <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>)}
+              <MenuItem value="HISTORICAL">Historical</MenuItem>
             </Select>
           </FormControl>
-          {has('lead.assign') && (
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Assignee</InputLabel>
-              <Select label="Assignee" value={assignee} onChange={(e) => { setAssignee(e.target.value); resetPaging(); }}>
-                <MenuItem value="">Anyone</MenuItem>
-                {assignableUsers.map((u) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
+          {assignedOnly && (
+            <FormControl size="small" sx={{ minWidth: 170 }}>
+              <InputLabel>Status</InputLabel>
+              <Select label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); resetPaging(); }}>
+                <MenuItem value="">All statuses</MenuItem>
+                {LEAD_DETAIL_STATUS_OPTIONS.map((st) => <MenuItem key={st} value={st}>{sentenceCase(st)}</MenuItem>)}
               </Select>
             </FormControl>
           )}
@@ -339,7 +338,12 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
                     </TableCell>
                   )}
                   {visibleCols.map((c) => (
-                    <TableCell key={c.key} sx={{ cursor: 'pointer' }} onClick={() => navigate(`/leads/${l.id}`)}>
+                    // Lead Management rows aren't clickable; only Assigned Leads opens the detail page.
+                    <TableCell
+                      key={c.key}
+                      sx={assignedOnly ? { cursor: 'pointer' } : undefined}
+                      onClick={assignedOnly ? () => navigate(`/leads/${l.id}`) : undefined}
+                    >
                       {renderCell(c.key, l)}
                     </TableCell>
                   ))}
@@ -371,8 +375,8 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
 
       {/* row action menu */}
       <Menu anchorEl={rowMenu?.el} open={!!rowMenu} onClose={() => setRowMenu(null)}>
-        <MenuItem onClick={() => rowMenu && navigate(`/leads/${rowMenu.lead.id}`)}>Open details</MenuItem>
-        {canAssign && <MenuItem onClick={() => rowMenu && openSingleAssign(rowMenu.lead)}>Assign…</MenuItem>}
+        {assignedOnly && <MenuItem onClick={() => rowMenu && navigate(`/leads/${rowMenu.lead.id}`)}>Open details</MenuItem>}
+        {canAssignAction && <MenuItem onClick={() => rowMenu && openSingleAssign(rowMenu.lead)}>{assignVerb}…</MenuItem>}
         {canEdit && <Divider />}
         {canEdit && <MenuItem disabled sx={{ opacity: 1, fontSize: 12, color: 'text.secondary' }}>Convert to external lead</MenuItem>}
         {canEdit && EXTERNAL_LEAD_TYPES.map((t) => (
@@ -456,7 +460,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
 
       {/* assign dialog (single or bulk) */}
       <Dialog open={assignOpen} onClose={() => setAssignOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>{assignMode === 'single' ? 'Assign lead' : `Assign ${selectedIds.length} lead(s)`}</DialogTitle>
+        <DialogTitle>{assignMode === 'single' ? `${assignVerb} lead` : `${assignVerb} ${selectedIds.length} lead(s)`}</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 1 }}>
             <InputLabel>Assign to</InputLabel>
@@ -470,7 +474,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAssignOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={!assignTo || bulkLoading || singleLoading} onClick={doAssign}>Assign</Button>
+          <Button variant="contained" disabled={!assignTo || bulkLoading || singleLoading} onClick={doAssign}>{assignVerb}</Button>
         </DialogActions>
       </Dialog>
 

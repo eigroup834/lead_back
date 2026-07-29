@@ -33,7 +33,7 @@ async function assignOne(
   });
   if (existing.status === 'NEW') {
     await tx.leadStatusHistory.create({
-      data: { leadId, fromStatus: 'NEW', toStatus: 'ASSIGNED', changedById: assignedById, reason: 'Auto on assignment' },
+      data: { leadId, fromStatus: 'NEW', toStatus: 'ASSIGNED', changedById: assignedById },
     });
   }
   return true;

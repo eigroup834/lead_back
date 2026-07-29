@@ -1,4 +1,4 @@
-import { Grid, Typography, Box, Table, TableBody, TableCell, TableHead, TableRow, Card, CardHeader, CardContent } from '@mui/material';
+import { Grid, Typography, Box } from '@mui/material';
 import {
   ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, Cell, LineChart, Line, Legend,
@@ -12,7 +12,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import StatCard from '@/components/StatCard';
 import ChartCard from '@/components/ChartCard';
 import {
-  useSummaryQuery, useFunnelQuery, useDailyTrendQuery, useTeamPerformanceQuery,
+  useSummaryQuery, useFunnelQuery, useDailyTrendQuery,
 } from '@/features/dashboard/dashboardApi';
 import { CHART_COLORS } from '@/constants';
 
@@ -20,7 +20,6 @@ export default function DashboardPage() {
   const { data: summary, isLoading } = useSummaryQuery();
   const { data: funnel } = useFunnelQuery();
   const { data: daily } = useDailyTrendQuery({ days: 30 });
-  const { data: team } = useTeamPerformanceQuery();
 
   const s = summary?.data;
 
@@ -64,39 +63,6 @@ export default function DashboardPage() {
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>
-        </Grid>
-
-        <Grid item xs={12}>
-          <Card sx={{ height: '100%' }}>
-            <CardHeader title="Team Leaderboard" titleTypographyProps={{ variant: 'h6' }} />
-            <CardContent sx={{ pt: 0 }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Member</TableCell>
-                    <TableCell align="right">Assigned</TableCell>
-                    <TableCell align="right">Calls</TableCell>
-                    <TableCell align="right">Converted</TableCell>
-                    <TableCell align="right">Conv. %</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(team?.data ?? []).slice(0, 8).map((t) => (
-                    <TableRow key={t.userId}>
-                      <TableCell>{t.name}</TableCell>
-                      <TableCell align="right">{t.assigned}</TableCell>
-                      <TableCell align="right">{t.calls}</TableCell>
-                      <TableCell align="right">{t.converted}</TableCell>
-                      <TableCell align="right">{t.conversionRate}%</TableCell>
-                    </TableRow>
-                  ))}
-                  {!team?.data?.length && (
-                    <TableRow><TableCell colSpan={5} align="center" sx={{ color: 'text.secondary' }}>No data yet</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
         </Grid>
       </Grid>
     </Box>

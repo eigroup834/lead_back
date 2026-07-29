@@ -55,15 +55,6 @@ const LEAD_COLUMNS = [
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
-// Manual aliases for initials/nicknames in the sheet that don't literally appear
-// in a user's name. Key = sheet text (lowercased); value = any name word that DOES
-// appear in the target user's first/last name. Fill these in from the unmatched
-// report, then re-run. Names with no user (left the company etc.) stay NULL.
-const NAME_ALIASES: Record<string, string> = {
-  pk: 'pramit', // P.K. → Pramit Kumar (pramitk@eigroup.in)
-  // Vikas / Ashish / Shitij match automatically once those users are added.
-};
-
 /** Pull a clean string out of any ExcelJS cell value. */
 function cellStr(v: ExcelJS.CellValue): string | null {
   if (v === null || v === undefined) return null;
@@ -94,34 +85,20 @@ function toDateStr(v: ExcelJS.CellValue): string | null {
 }
 
 /**
- * Resolve an Excel "assigned_to" name (e.g. "Sandip", "Pramit; Tabish; Debarshi")
- * to a user id. Matches any name token against users' first/last name words, so
- * "Tabish" finds "Mohammad Tabish Ali". Returns the FIRST unambiguous match.
+ * The Excel "assigned_to" column holds a user's DB id (UUID). Resolve it to a
+ * real user id, validated against the users table so a bad/stale id is left NULL
+ * instead of failing the insert's foreign key. If a cell contains several ids
+ * (delimited), the first one that matches a real user wins.
  */
-function buildUserMatcher(users: Array<{ id: string; firstName: string; lastName: string }>) {
-  // token (a single normalized name word) -> set of matching user ids
-  const byToken = new Map<string, Set<string>>();
-  const add = (word: string, id: string) => {
-    const k = norm(word);
-    if (!k) return;
-    if (!byToken.has(k)) byToken.set(k, new Set());
-    byToken.get(k)!.add(id);
-  };
-  for (const u of users) {
-    `${u.firstName} ${u.lastName}`.split(/\s+/).forEach((w) => add(w, u.id));
-  }
-  // Register aliases: point the alias token at the same user as its target word.
-  for (const [from, to] of Object.entries(NAME_ALIASES)) {
-    const target = byToken.get(norm(to));
-    if (target && target.size === 1) byToken.set(norm(from), target);
-  }
+function buildUserResolver(users: Array<{ id: string }>) {
+  // lowercased id -> canonical id (Postgres uuids compare case-insensitively,
+  // but we return the canonical form the DB uses).
+  const byId = new Map(users.map((u) => [u.id.toLowerCase(), u.id]));
   return (assignedTo: string | null): string | null => {
     if (!assignedTo) return null;
-    for (const part of assignedTo.split(/[;,/&|+]+/)) {
-      for (const word of part.trim().split(/\s+/)) {
-        const hit = byToken.get(norm(word));
-        if (hit && hit.size === 1) return [...hit][0]; // unambiguous match
-      }
+    for (const part of assignedTo.split(/[;,/&|+\s]+/)) {
+      const id = part.trim().toLowerCase();
+      if (id && byId.has(id)) return byId.get(id)!;
     }
     return null;
   };
@@ -169,14 +146,14 @@ async function main() {
     process.exit(1);
   }
 
-  // Load users so assigned_to names can be resolved to real user ids.
+  // Load users so the assigned_to id can be validated against real users.
   const users = await prisma.user.findMany({
     where: { deletedAt: null },
-    select: { id: true, firstName: true, lastName: true },
+    select: { id: true },
   });
-  const matchUser = buildUserMatcher(users);
-  console.log(`   users loaded : ${users.length} (for assigned_to matching)`);
-  const unmatched = new Map<string, number>(); // assigned_to text -> count
+  const matchUser = buildUserResolver(users);
+  console.log(`   users loaded : ${users.length} (for assigned_to id lookup)`);
+  const unmatched = new Map<string, number>(); // assigned_to id -> count
 
   if (truncate && !dryRun) {
     const del = await prisma.$executeRawUnsafe('DELETE FROM historical_leads WHERE source_lead_id IS NULL');

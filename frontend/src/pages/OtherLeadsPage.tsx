@@ -9,7 +9,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import TuneIcon from '@mui/icons-material/Tune';
 import SyncIcon from '@mui/icons-material/Sync';
-import CloudDoneIcon from '@mui/icons-material/CloudDone';
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import {
   prettyLabel, EXTERNAL_CATEGORIES, CATEGORY_COLOR, EXHIBITOR, RECLASSIFY_OPTIONS,
 } from '@/constants';
@@ -17,13 +17,16 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   useListExternalLeadsQuery, useExternalCountsQuery, useConvertToExhibitorMutation,
-  useBulkConvertToExhibitorMutation, useReclassifyExternalLeadMutation, useSyncExternalLeadMutation,
-  useBulkSyncExternalLeadsMutation, type ExternalLead, type ExternalCategory,
+  useBulkConvertToExhibitorMutation, useReclassifyExternalLeadMutation,
+  useAssignExternalLeadsMutation, useSyncExternalLeadsMutation,
+  type ExternalLead, type ExternalCategory,
 } from '@/features/external/externalApi';
+import { useListUsersQuery } from '@/features/adminApi';
 
 export default function OtherLeadsPage() {
-  const { has } = usePermissions();
+  const { has, level } = usePermissions();
   const canEdit = has('lead.edit');
+  const canAssign = level === 1; // only Super Admin assigns brochure leads
 
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
@@ -34,7 +37,8 @@ export default function OtherLeadsPage() {
   const [classifyTarget, setClassifyTarget] = useState<ExternalLead | null>(null);
   const [classifyCat, setClassifyCat] = useState<string>('');
   const [bulkConfirm, setBulkConfirm] = useState(false);
-  const [bulkSyncConfirm, setBulkSyncConfirm] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignTo, setAssignTo] = useState('');
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
 
   const { data, isFetching } = useListExternalLeadsQuery({
@@ -42,11 +46,15 @@ export default function OtherLeadsPage() {
     category: category || undefined,
   });
   const { data: counts } = useExternalCountsQuery();
+  const { data: users } = useListUsersQuery(undefined, { skip: !canAssign });
   const [convert, { isLoading: converting }] = useConvertToExhibitorMutation();
   const [bulkConvert, { isLoading: bulkConverting }] = useBulkConvertToExhibitorMutation();
   const [reclassify, { isLoading: reclassifying }] = useReclassifyExternalLeadMutation();
-  const [syncLead, { isLoading: syncing }] = useSyncExternalLeadMutation();
-  const [bulkSync, { isLoading: bulkSyncing }] = useBulkSyncExternalLeadsMutation();
+  const [assignExternal, { isLoading: assigning }] = useAssignExternalLeadsMutation();
+  const [syncExternal, { isLoading: syncing }] = useSyncExternalLeadsMutation();
+
+  const members = [...(users?.data ?? [])]
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
   const rows = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
@@ -80,18 +88,6 @@ export default function OtherLeadsPage() {
     }
   };
 
-  // Queue for sync — the cron job pushes synced leads to their matching panel.
-  const doSync = async () => {
-    if (!classifyTarget) return;
-    try {
-      await syncLead(classifyTarget.id).unwrap();
-      setToast({ msg: 'Queued for sync — the cron job will push it to its panel', sev: 'success' });
-      setClassifyTarget(null);
-    } catch {
-      setToast({ msg: 'Sync failed', sev: 'error' });
-    }
-  };
-
   const doBulkConvert = async () => {
     try {
       const res = await bulkConvert(selectedIds).unwrap();
@@ -104,15 +100,25 @@ export default function OtherLeadsPage() {
     }
   };
 
-  const doBulkSync = async () => {
+  const doAssign = async () => {
     try {
-      const res = await bulkSync(selectedIds).unwrap();
+      const res = await assignExternal({ ids: selectedIds, assignToId: assignTo }).unwrap();
+      setToast({ msg: `Assigned ${res.data.assigned} lead(s)`, sev: 'success' });
+      setSelected({}); setAssignTo('');
+    } catch {
+      setToast({ msg: 'Assignment failed', sev: 'error' });
+    } finally {
+      setAssignOpen(false);
+    }
+  };
+
+  const doSync = async (ids: string[]) => {
+    try {
+      const res = await syncExternal(ids).unwrap();
       setToast({ msg: `Queued ${res.data.queued} lead(s) for sync`, sev: 'success' });
       setSelected({});
     } catch {
-      setToast({ msg: 'Bulk sync failed', sev: 'error' });
-    } finally {
-      setBulkSyncConfirm(false);
+      setToast({ msg: 'Sync failed', sev: 'error' });
     }
   };
 
@@ -120,7 +126,7 @@ export default function OtherLeadsPage() {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
         <Box>
-          <Typography variant="h5">Other Leads</Typography>
+          <Typography variant="h5">Brochure Data</Typography>
           <Typography variant="body2" color="text.secondary">
             Visitor, delegate & speaker leads staged for the local CRM. Reclassify any as an exhibitor lead.
           </Typography>
@@ -145,15 +151,20 @@ export default function OtherLeadsPage() {
             </Select>
           </FormControl>
           <Box sx={{ flex: 1 }} />
+          {canAssign && selectedIds.length > 0 && (
+            <Button size="small" variant="outlined" startIcon={<AssignmentIndIcon />} disabled={assigning} onClick={() => setAssignOpen(true)}>
+              Assign ({selectedIds.length})
+            </Button>
+          )}
           {canEdit && selectedIds.length > 0 && (
-            <>
-              <Button size="small" variant="outlined" startIcon={<SyncIcon />} disabled={bulkSyncing} onClick={() => setBulkSyncConfirm(true)}>
-                Sync ({selectedIds.length})
-              </Button>
-              <Button size="small" variant="contained" startIcon={<SwapHorizIcon />} disabled={bulkConverting} onClick={() => setBulkConfirm(true)}>
-                To exhibitor ({selectedIds.length})
-              </Button>
-            </>
+            <Button size="small" variant="outlined" startIcon={<SyncIcon />} disabled={syncing} onClick={() => doSync(selectedIds)}>
+              Sync ({selectedIds.length})
+            </Button>
+          )}
+          {canEdit && selectedIds.length > 0 && (
+            <Button size="small" variant="contained" startIcon={<SwapHorizIcon />} disabled={bulkConverting} onClick={() => setBulkConfirm(true)}>
+              To exhibitor ({selectedIds.length})
+            </Button>
           )}
           {isFetching && <CircularProgress size={20} />}
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', fontWeight: 500 }}>
@@ -185,6 +196,7 @@ export default function OtherLeadsPage() {
                 <TableCell sx={{ fontWeight: 700 }}>Designation</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Event</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Assigned to</TableCell>
                 {canEdit && <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>}
               </TableRow>
             </TableHead>
@@ -210,24 +222,29 @@ export default function OtherLeadsPage() {
                       <Stack direction="row" spacing={0.5} alignItems="center">
                         <Chip size="small" color={CATEGORY_COLOR[r.category] ?? 'default'} label={prettyLabel(r.category)} />
                         {r.syncStatus && (
-                          <Tooltip title={r.syncStatus === 'SYNCED' ? 'Sent to panel' : 'Queued — awaiting cron sync'}>
-                            <Chip
-                              size="small" variant="outlined"
-                              color={r.syncStatus === 'SYNCED' ? 'success' : 'default'}
-                              icon={r.syncStatus === 'SYNCED' ? <CloudDoneIcon /> : <SyncIcon />}
-                              label={r.syncStatus === 'SYNCED' ? 'Synced' : 'Queued'}
-                            />
-                          </Tooltip>
+                          <Chip size="small" variant="outlined" icon={<SyncIcon />} color={r.syncStatus === 'SYNCED' ? 'success' : 'default'} label={r.syncStatus === 'SYNCED' ? 'Synced' : 'Queued'} />
                         )}
                       </Stack>
                     </TableCell>
+                    <TableCell>
+                      <Typography variant="caption">{r.assignedUser ? `${r.assignedUser.firstName} ${r.assignedUser.lastName}` : '—'}</Typography>
+                    </TableCell>
                     {canEdit && (
                       <TableCell align="right">
-                        <Tooltip title="Classify or sync this lead">
-                          <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => openClassify(r)}>
-                            Classify
-                          </Button>
-                        </Tooltip>
+                        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                          <Tooltip title="Reclassify this lead">
+                            <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => openClassify(r)}>
+                              Classify
+                            </Button>
+                          </Tooltip>
+                          <Tooltip title="Queue for sync to its panel">
+                            <span>
+                              <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }} disabled={syncing} onClick={() => doSync([r.id])}>
+                                <SyncIcon fontSize="small" />
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        </Stack>
                       </TableCell>
                     )}
                   </TableRow>
@@ -235,7 +252,7 @@ export default function OtherLeadsPage() {
               })}
               {!isFetching && rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={canEdit ? 8 : 6} align="center" sx={{ py: 6, color: 'text.secondary' }}>No other leads found</TableCell>
+                  <TableCell colSpan={canEdit ? 9 : 7} align="center" sx={{ py: 6, color: 'text.secondary' }}>No brochure leads found</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -263,8 +280,6 @@ export default function OtherLeadsPage() {
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Currently {prettyLabel(classifyTarget?.category ?? '')}
-            {classifyTarget?.syncStatus === 'SYNCED' && ' · already synced'}
-            {classifyTarget?.syncStatus === 'PENDING' && ' · queued for sync'}
           </Typography>
 
           <FormControl fullWidth size="small" sx={{ mt: 2.5 }}>
@@ -274,27 +289,8 @@ export default function OtherLeadsPage() {
             </Select>
           </FormControl>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Exhibitor moves the lead into Lead Management. Visitor, delegate & speaker stay in this panel — use
-            {' '}<b>Sync</b> to queue them so the cron job pushes them to their panel.
+            Exhibitor moves the lead into Lead Management. Visitor, delegate & speaker stay in this panel.
           </Typography>
-
-          <Divider sx={{ my: 2 }} />
-
-          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>Sync to panel</Typography>
-              <Typography variant="caption" color="text.secondary">
-                Queue for the cron job to push to the visitor / delegate / speaker panel.
-              </Typography>
-            </Box>
-            <Button
-              size="small" variant="outlined" startIcon={<SyncIcon />}
-              disabled={syncing || classifyCat === EXHIBITOR || classifyTarget?.category === 'OTHER'}
-              onClick={doSync}
-            >
-              {classifyTarget?.syncStatus ? 'Re-sync' : 'Sync'}
-            </Button>
-          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setClassifyTarget(null)}>Cancel</Button>
@@ -323,19 +319,23 @@ export default function OtherLeadsPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={bulkSyncConfirm} onClose={() => setBulkSyncConfirm(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Sync {selectedIds.length} lead(s)?</DialogTitle>
+      <Dialog open={assignOpen} onClose={() => setAssignOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Assign {selectedIds.length} brochure lead(s)</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">
-            The selected lead(s) will be queued for sync. The cron job will pick them up and push each to its
-            {' '}respective panel (visitor / delegate / speaker) based on its current type.
+          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+            <InputLabel>Assign to</InputLabel>
+            <Select label="Assign to" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
+              {members.map((u) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
+              {members.length === 0 && <MenuItem disabled>No users</MenuItem>}
+            </Select>
+          </FormControl>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+            The assigned member will see these leads in their Brochure Data and can reclassify or sync them.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBulkSyncConfirm(false)}>Cancel</Button>
-          <Button variant="contained" disabled={bulkSyncing} onClick={doBulkSync}>
-            {bulkSyncing ? 'Queuing…' : `Sync ${selectedIds.length}`}
-          </Button>
+          <Button onClick={() => setAssignOpen(false)}>Cancel</Button>
+          <Button variant="contained" disabled={!assignTo || assigning} onClick={doAssign}>Assign</Button>
         </DialogActions>
       </Dialog>
 

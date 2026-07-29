@@ -2,7 +2,7 @@ import { prisma } from '@config/prisma';
 import { env } from '@config/env';
 import { logger } from '@config/logger';
 import { smsService } from '@services/sms.service';
-import { istDateTimeToUtc, formatIst } from '@utils/ist';
+import { istDateTimeToUtc } from '@utils/ist';
 
 // In-process follow-up SMS reminder scheduler. Mirrors sync.scheduler.ts: no
 // Redis, no BullMQ, no separate worker — the API server scans on an interval.
@@ -17,15 +17,13 @@ let timer: NodeJS.Timeout | null = null;
 const MS_PER_MINUTE = 60_000;
 const MAX_PER_RUN = 500;
 
-function buildMessage(params: {
-  repFirstName: string;
-  leadLabel: string;
-  dueAt: Date;
-  note: string | null;
-}): string {
-  const { repFirstName, leadLabel, dueAt, note } = params;
-  const tail = note ? ` Note: ${note.slice(0, 80)}` : '';
-  return `Hi ${repFirstName}, reminder: follow-up with ${leadLabel} at ${formatIst(dueAt)} IST.${tail}`;
+// Must match the DLT-approved template exactly, with only the blanks filled:
+//   "Dear Team Member ,You have a follow-up scheduled today at {time} with
+//    {person} from {company} Log in to the lead crm portal for more details.
+//    @Exhibitions India"
+function buildMessage(params: { time: string; person: string; company: string }): string {
+  const { time, person, company } = params;
+  return `Dear Team Member ,You have a follow-up scheduled today at ${time} with ${person} from ${company} Log in to the lead crm portal for more details. @Exhibitions India`;
 }
 
 /** Scan for due follow-ups and send their reminders. Skips if a run is in progress. */
@@ -48,8 +46,10 @@ export async function runFollowupRemindersNow(
     const candidates = await prisma.leadFollowup.findMany({
       where: {
         status: 'PENDING',
-        reminderSentAt: null,
         followupDate: { gte: from, lte: to },
+        reminderDaySentAt: null,
+        // Don't remind for leads that are already closed (converted/lost/etc).
+        lead: { deletedAt: null, status: { notIn: ['CONVERTED', 'LOST', 'INVALID', 'NOT_INTERESTED'] as never } },
       },
       take: MAX_PER_RUN,
       orderBy: { followupDate: 'asc' },
@@ -59,18 +59,18 @@ export async function runFollowupRemindersNow(
       },
     });
 
-    const windowMs = env.FOLLOWUP_REMINDER_LEAD_MINUTES * MS_PER_MINUTE;
     let sent = 0;
     let skipped = 0;
     let failed = 0;
 
     for (const fu of candidates) {
       const dueAt = istDateTimeToUtc(fu.followupDate, fu.followupTime ?? env.FOLLOWUP_REMINDER_DEFAULT_TIME);
+      const dayAt = istDateTimeToUtc(fu.followupDate, env.FOLLOWUP_DAY_REMINDER_TIME);
 
-      // Not yet inside the reminder window.
-      if (dueAt.getTime() - now.getTime() > windowMs) continue;
-      // Far past (>12h late) — the overdue sweep owns these; don't spam.
-      if (now.getTime() - dueAt.getTime() > 12 * 60 * MS_PER_MINUTE) continue;
+      // Day-of reminder only: fires from the day-reminder time until the follow-up
+      // time. (The "just before" reminder is intentionally disabled for now.)
+      const dayDue = !fu.reminderDaySentAt && now.getTime() >= dayAt.getTime() && now.getTime() < dueAt.getTime();
+      if (!dayDue) continue;
 
       if (!fu.assignee?.phone) {
         skipped += 1;
@@ -78,21 +78,18 @@ export async function runFollowupRemindersNow(
         continue;
       }
 
-      const leadLabel =
-        fu.lead?.company || [fu.lead?.firstName, fu.lead?.lastName].filter(Boolean).join(' ') || 'your lead';
+      const person = [fu.lead?.firstName, fu.lead?.lastName].filter(Boolean).join(' ') || 'your contact';
+      const company = fu.lead?.company || 'the company';
+      const time = fu.followupTime ?? env.FOLLOWUP_REMINDER_DEFAULT_TIME;
 
-      const result = await smsService.send(
-        fu.assignee.phone,
-        buildMessage({ repFirstName: fu.assignee.firstName, leadLabel, dueAt, note: fu.note }),
-      );
-
+      // Recipient mobile = the assigned user's phone (from the users table).
+      const result = await smsService.send(fu.assignee.phone, buildMessage({ time, person, company }));
       if (result.ok) {
-        // Dry runs mark as sent too, so the pipeline is verifiable before go-live.
-        await prisma.leadFollowup.update({ where: { id: fu.id }, data: { reminderSentAt: new Date() } });
+        await prisma.leadFollowup.update({ where: { id: fu.id }, data: { reminderDaySentAt: new Date() } });
         sent += 1;
       } else {
         failed += 1;
-        logger.warn(`[followup-reminder] send failed for follow-up ${fu.id}: ${result.error}`);
+        logger.warn(`[followup-reminder] day send failed for follow-up ${fu.id}: ${result.error}`);
       }
     }
 

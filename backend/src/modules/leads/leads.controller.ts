@@ -76,7 +76,7 @@ export const leadsController = {
   },
 
   async changeStatus(req: Request, res: Response) {
-    const lead = await leadsService.changeStatus(req.params.id, req.body.status, req.user!.id, req.body.reason);
+    const lead = await leadsService.changeStatus(req.params.id, req.body.status, req.user!.id, req.body.reason, req.body.sqmSpace);
     return ok(res, lead);
   },
 

@@ -21,7 +21,8 @@ export interface ExternalLead {
   createdAt: string;
   // Sync lifecycle — set once queued for the cron job that pushes leads to their panel.
   syncStatus?: 'PENDING' | 'SYNCED' | null;
-  syncedAt?: string | null;
+  assignedUserId?: string | null;
+  assignedUser?: { id: string; firstName: string; lastName: string } | null;
 }
 
 export interface ExternalListParams {
@@ -56,13 +57,14 @@ export const externalApi = api.injectEndpoints({
       query: ({ id, category }) => ({ url: `/external-leads/${id}/reclassify`, method: 'PATCH', body: { category } }),
       invalidatesTags: ['External'],
     }),
-    // Queue for sync — a cron job later picks up synced leads and pushes them to their respective panel.
-    syncExternalLead: build.mutation<ApiEnvelope<{ id: string; syncStatus: string }>, string>({
-      query: (id) => ({ url: `/external-leads/${id}/sync`, method: 'POST' }),
+    // Assign brochure lead(s) to a user.
+    assignExternalLeads: build.mutation<ApiEnvelope<{ assigned: number; total: number }>, { ids: string[]; assignToId: string }>({
+      query: (body) => ({ url: '/external-leads/assign', method: 'POST', body }),
       invalidatesTags: ['External'],
     }),
-    bulkSyncExternalLeads: build.mutation<ApiEnvelope<{ queued: number; skipped: number; total: number }>, string[]>({
-      query: (ids) => ({ url: '/external-leads/sync/bulk', method: 'POST', body: { ids } }),
+    // Queue lead(s) for sync — a cron job later pushes them to their respective panel.
+    syncExternalLeads: build.mutation<ApiEnvelope<{ queued: number; total: number }>, string[]>({
+      query: (ids) => ({ url: '/external-leads/sync', method: 'POST', body: { ids } }),
       invalidatesTags: ['External'],
     }),
   }),
@@ -74,6 +76,6 @@ export const {
   useConvertToExhibitorMutation,
   useBulkConvertToExhibitorMutation,
   useReclassifyExternalLeadMutation,
-  useSyncExternalLeadMutation,
-  useBulkSyncExternalLeadsMutation,
+  useAssignExternalLeadsMutation,
+  useSyncExternalLeadsMutation,
 } = externalApi;

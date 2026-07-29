@@ -8,6 +8,7 @@ export interface LeadListParams {
   q?: string;
   status?: string[];
   sourceChannel?: string;
+  source?: string;
   country?: string;
   assignedUserId?: string;
   unassigned?: boolean;
@@ -36,7 +37,7 @@ export const leadsApi = api.injectEndpoints({
       query: ({ id, body }) => ({ url: `/leads/${id}`, method: 'PATCH', body }),
       invalidatesTags: (_r, _e, { id }) => [{ type: 'Lead', id }, 'Leads'],
     }),
-    changeStatus: build.mutation<ApiEnvelope<Lead>, { id: string; status: string; reason?: string }>({
+    changeStatus: build.mutation<ApiEnvelope<Lead>, { id: string; status: string; reason?: string; sqmSpace?: string }>({
       query: ({ id, ...body }) => ({ url: `/leads/${id}/status`, method: 'POST', body }),
       invalidatesTags: (_r, _e, { id }) => [{ type: 'Lead', id }, 'Leads', 'Dashboard'],
     }),
@@ -54,7 +55,7 @@ export const leadsApi = api.injectEndpoints({
     }),
     assignSingle: build.mutation<ApiEnvelope<unknown>, { leadId: string; assignToId: string }>({
       query: (body) => ({ url: '/leads/assign', method: 'POST', body }),
-      invalidatesTags: ['Leads', 'Dashboard'],
+      invalidatesTags: (_r, _e, { leadId }) => [{ type: 'Lead', id: leadId }, 'Leads', 'Dashboard'],
     }),
     assignBulk: build.mutation<ApiEnvelope<unknown>, { leadIds: string[]; assignToId: string }>({
       query: (body) => ({ url: '/leads/assign/bulk', method: 'POST', body }),

@@ -72,12 +72,15 @@ export const leadsService = {
 
   // Status is NEVER overwritten destructively: we append to lead_status_history
   // in the same transaction that updates the denormalized current status.
-  async changeStatus(id: string, toStatus: LeadStatus, userId: string, reason?: string) {
+  async changeStatus(id: string, toStatus: LeadStatus, userId: string, reason?: string, sqmSpace?: string) {
     const lead = await this.get(id);
-    if (lead.status === toStatus) return lead;
+    if (lead.status === toStatus && sqmSpace === undefined) return lead;
 
     const [updated] = await prisma.$transaction([
-      prisma.lead.update({ where: { id }, data: { status: toStatus } }),
+      prisma.lead.update({
+        where: { id },
+        data: { status: toStatus, ...(sqmSpace !== undefined ? { sqmSpace } : {}) },
+      }),
       prisma.leadStatusHistory.create({
         data: { leadId: id, fromStatus: lead.status, toStatus, changedById: userId, reason },
       }),
@@ -147,12 +150,10 @@ export const leadsService = {
             eventYear,
             eventName: lead.eventName,
             company: lead.company,
-            firstName: lead.firstName,
-            lastName: lead.lastName,
+            name: [lead.firstName, lead.lastName].filter(Boolean).join(' ') || null,
             designation: lead.designation,
             email: lead.email,
             mobile: lead.mobile,
-            phone: lead.phone,
             city: lead.city,
             country: lead.country,
             status: lead.status,

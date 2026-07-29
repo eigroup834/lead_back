@@ -2,15 +2,25 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@config/prisma';
 import { cache } from '@services/cache.service';
 import { AppError } from '@utils/AppError';
+import type { AuthUser } from '@/types';
 import type { ListExternalQuery } from './external.validator';
 
 async function bustDashboard() {
   await cache.delPattern('dash:*');
 }
 
+const ASSIGNEE_SELECT = { id: true, firstName: true, lastName: true };
+
+// Only Super Admin (level 1) sees all brochure leads; everyone else sees only
+// the ones assigned to them.
+function scopeWhere(user: AuthUser): Prisma.ExternalLeadWhereInput {
+  return user.level === 1 ? {} : { assignedUserId: user.id };
+}
+
 export const externalService = {
-  async list(q: ListExternalQuery) {
-    const where: Prisma.ExternalLeadWhereInput = { deletedAt: null };
+  async list(user: AuthUser, q: ListExternalQuery) {
+    // Once queued for sync a lead leaves this list (it's handed off to its panel).
+    const where: Prisma.ExternalLeadWhereInput = { deletedAt: null, syncStatus: null, ...scopeWhere(user) };
     if (q.category) where.category = q.category;
     if (q.q) {
       where.OR = [
@@ -29,22 +39,41 @@ export const externalService = {
         orderBy,
         skip: (q.page - 1) * q.limit,
         take: q.limit,
+        include: { assignedUser: { select: ASSIGNEE_SELECT } },
       }),
       prisma.externalLead.count({ where }),
     ]);
     return { items, meta: { page: q.page, limit: q.limit, total, pages: Math.max(1, Math.ceil(total / q.limit)) } };
   },
 
-  // Category counts for the filter chips (respects nothing but the soft-delete flag).
-  async counts() {
+  // Category counts for the filter chips (scoped + sync-filtered like the list).
+  async counts(user: AuthUser) {
     const grouped = await prisma.externalLead.groupBy({
       by: ['category'],
-      where: { deletedAt: null },
+      where: { deletedAt: null, syncStatus: null, ...scopeWhere(user) },
       _count: { _all: true },
     });
     const out: Record<string, number> = {};
     for (const g of grouped) out[g.category] = g._count._all;
     return out;
+  },
+
+  // Assign brochure lead(s) to a user.
+  async assign(ids: string[], assignToId: string) {
+    const res = await prisma.externalLead.updateMany({
+      where: { id: { in: ids }, deletedAt: null },
+      data: { assignedUserId: assignToId },
+    });
+    return { assigned: res.count, total: ids.length };
+  },
+
+  // Queue brochure lead(s) for sync — a cron job later pushes them to their panel.
+  async sync(ids: string[]) {
+    const res = await prisma.externalLead.updateMany({
+      where: { id: { in: ids }, deletedAt: null },
+      data: { syncStatus: 'PENDING' },
+    });
+    return { queued: res.count, total: ids.length };
   },
 
   // Copy one external lead into the Lead table (leadType EXHIBITION) and soft-delete
@@ -69,6 +98,15 @@ export const externalService = {
     });
     await tx.externalLead.update({ where: { id: ext.id }, data: { deletedAt: new Date() } });
     return created;
+  },
+
+  // Change a brochure lead's category (Visitor/Delegate/Speaker/Other) in place.
+  async reclassify(id: string, category: Prisma.ExternalLeadCreateInput['category']) {
+    const ext = await prisma.externalLead.findFirst({ where: { id, deletedAt: null } });
+    if (!ext) throw AppError.notFound('External lead not found');
+    const updated = await prisma.externalLead.update({ where: { id }, data: { category } });
+    await bustDashboard();
+    return updated;
   },
 
   // Reclassify a single non-exhibitor lead as an exhibitor lead.

@@ -1,21 +1,21 @@
 import { z } from 'zod';
 
 export const LEAD_STATUSES = [
-  'NEW', 'ASSIGNED', 'CONTACTED', 'NOT_REACHABLE', 'INTERESTED',
-  'FOLLOW_UP', 'HOT', 'WARM', 'COLD', 'CONVERTED', 'LOST',
+  'NEW', 'ASSIGNED', 'CONTACTED', 'NOT_REACHABLE', 'INTERESTED', 'NOT_INTERESTED',
+  'FOLLOW_UP', 'HOT', 'WARM', 'COLD', 'CONVERTED', 'INVALID', 'LOST',
 ] as const;
 
 export const SORTABLE = ['createdAt', 'createDate', 'company', 'status'] as const;
 
 export const LEAD_SOURCES = [
-  'WEBSITE', 'MANUAL', 'REFERRAL', 'WALK_IN', 'EMAIL', 'PHONE', 'SOCIAL_MEDIA', 'PARTNER', 'OTHER',
+  'WEBSITE', 'MANUAL', 'REFERRAL', 'WALK_IN', 'EMAIL', 'PHONE', 'SOCIAL_MEDIA', 'PARTNER', 'HISTORICAL', 'OTHER',
 ] as const;
 
 export const LEAD_TYPES = ['EXHIBITION', 'VISITOR', 'DELEGATE', 'SPEAKER'] as const;
 
 // Which flow a synced lead came from. Drives the Source filter. GOOGLE/LINKEDIN
 // have no data yet (coming later) but are accepted so the filter never 400s.
-export const LEAD_SOURCE_CHANNELS = ['SPACE_BOOKING', 'POST_SHOW_DOWNLOAD', 'GOOGLE', 'LINKEDIN'] as const;
+export const LEAD_SOURCE_CHANNELS = ['SPACE_BOOKING', 'POST_SHOW_DOWNLOAD', 'GOOGLE', 'LINKEDIN', 'META'] as const;
 
 export const listLeadsQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -28,6 +28,7 @@ export const listLeadsQuery = z.object({
   eventName: z.string().trim().optional(),
   country: z.string().trim().optional(),
   sourceChannel: z.enum(LEAD_SOURCE_CHANNELS).optional(),
+  source: z.enum(LEAD_SOURCES).optional(),
   assignedUserId: z.string().uuid().optional(),
   unassigned: z.coerce.boolean().optional(),
   assigned: z.coerce.boolean().optional(), // any assignee (assignedUserId not null)
@@ -90,6 +91,8 @@ export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 export const changeStatusSchema = z.object({
   status: z.enum(LEAD_STATUSES),
   reason: z.string().max(500).optional(),
+  // Space booked — captured when converting a lead.
+  sqmSpace: z.string().trim().max(100).optional(),
 });
 
 // Reclassify an exhibitor lead as a non-exhibitor type. The lead is moved out of the

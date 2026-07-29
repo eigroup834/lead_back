@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { startOfDay, endOfDay } from 'date-fns';
-import { Prisma } from '@prisma/client';
+import { Prisma, type LeadStatus } from '@prisma/client';
 import { prisma } from '@config/prisma';
 import { AppError } from '@utils/AppError';
 import { ok, created } from '@utils/response';
@@ -40,6 +40,12 @@ function assigneeScope(user: AuthUser, assigneeId?: string): Prisma.LeadFollowup
   return {};
 }
 
+// A lead in one of these states is closed — its pending follow-ups drop off the list.
+const CLOSED_LEAD_STATUSES = ['CONVERTED', 'LOST', 'INVALID', 'NOT_INTERESTED'] as const;
+const OPEN_LEAD: Prisma.LeadFollowupWhereInput = {
+  lead: { deletedAt: null, status: { notIn: CLOSED_LEAD_STATUSES as unknown as LeadStatus[] } },
+};
+
 const LEAD_INCLUDE = {
   lead: {
     select: {
@@ -67,11 +73,11 @@ export const followupsService = {
     // 'all'/'mine' = every pending follow-up regardless of date. The dated scopes
     // narrow by followupDate; 'upcoming' is everything after today (no upper cap),
     // so a follow-up several weeks out still shows up.
-    let where: Prisma.LeadFollowupWhereInput = { ...base, status: 'PENDING' };
+    let where: Prisma.LeadFollowupWhereInput = { ...base, ...OPEN_LEAD, status: 'PENDING' };
     if (q.scope === 'overdue') where.followupDate = { lt: startOfDay(now) };
     else if (q.scope === 'today') where.followupDate = { gte: startOfDay(now), lte: endOfDay(now) };
     else if (q.scope === 'upcoming') where.followupDate = { gt: endOfDay(now) };
-    else if (q.scope === 'all') where = { ...base, status: 'PENDING' };
+    else if (q.scope === 'all') where = { ...base, ...OPEN_LEAD, status: 'PENDING' };
     return prisma.leadFollowup.findMany({
       where,
       orderBy: [{ followupDate: 'asc' }, { priority: 'desc' }],
@@ -80,14 +86,30 @@ export const followupsService = {
     });
   },
 
+  // Counts per scope for the tab badges (same assignee scope as the list).
+  async counts(user: AuthUser, assigneeId?: string) {
+    const now = new Date();
+    const base: Prisma.LeadFollowupWhereInput = { ...assigneeScope(user, assigneeId), ...OPEN_LEAD, status: 'PENDING' };
+    const [overdue, today, upcoming, all] = await prisma.$transaction([
+      prisma.leadFollowup.count({ where: { ...base, followupDate: { lt: startOfDay(now) } } }),
+      prisma.leadFollowup.count({ where: { ...base, followupDate: { gte: startOfDay(now), lte: endOfDay(now) } } }),
+      prisma.leadFollowup.count({ where: { ...base, followupDate: { gt: endOfDay(now) } } }),
+      prisma.leadFollowup.count({ where: base }),
+    ]);
+    return { overdue, today, upcoming, all };
+  },
+
   async update(id: string, user: AuthUser, input: z.infer<typeof updateSchema>) {
     const fu = await prisma.leadFollowup.findUnique({ where: { id } });
     if (!fu) throw AppError.notFound('Follow-up not found');
     if (user.level >= 4 && fu.assigneeId !== user.id) throw AppError.forbidden();
     const data: Prisma.LeadFollowupUpdateInput = { ...input };
     if (input.status === 'DONE') data.completedAt = new Date();
-    // Rescheduling re-arms the SMS reminder for the new date/time.
-    if (input.followupDate !== undefined || input.followupTime !== undefined) data.reminderSentAt = null;
+    // Rescheduling re-arms both SMS reminders for the new date/time.
+    if (input.followupDate !== undefined || input.followupTime !== undefined) {
+      data.reminderSentAt = null;
+      data.reminderDaySentAt = null;
+    }
     return prisma.leadFollowup.update({ where: { id }, data });
   },
 };
@@ -96,6 +118,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/followups', requirePermission('lead.view'), validate({ query: listQuery }), asyncHandler(async (req, res) => ok(res, await followupsService.list(req.user!, req.query as never))));
+router.get('/followups/counts', requirePermission('lead.view'), asyncHandler(async (req, res) => ok(res, await followupsService.counts(req.user!, req.query.assigneeId as string | undefined))));
 router.post('/leads/:id/followups', requirePermission('lead.followup'), validate({ params: z.object({ id: z.string().uuid() }), body: createSchema }), asyncHandler(async (req, res) => created(res, await followupsService.create(req.params.id, req.user!, req.body))));
 router.patch('/followups/:id', requirePermission('lead.followup'), validate({ params: z.object({ id: z.string().uuid() }), body: updateSchema }), asyncHandler(async (req, res) => ok(res, await followupsService.update(req.params.id, req.user!, req.body))));
 

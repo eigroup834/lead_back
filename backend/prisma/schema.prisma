@@ -27,11 +27,13 @@ enum LeadStatus {
   CONTACTED
   NOT_REACHABLE
   INTERESTED
+  NOT_INTERESTED
   FOLLOW_UP
   HOT
   WARM
   COLD
   CONVERTED
+  INVALID
   LOST
 }
 
@@ -61,6 +63,7 @@ enum LeadSource {
   PHONE
   SOCIAL_MEDIA
   PARTNER
+  HISTORICAL
   OTHER
 }
 
@@ -233,6 +236,8 @@ model User {
   notifications   Notification[]
   savedFilters    SavedFilter[]
   historicalUploads HistoricalUpload[]
+  assignedExternalLeads ExternalLead[] @relation("ExternalAssignee")
+  assignedHistoricalLeads HistoricalLead[] @relation("HistoricalAssignee")
 
   @@index([departmentId])
   @@index([teamId])
@@ -293,6 +298,7 @@ model Lead {
   designation  String?
   shellSpace   String? @map("shell_space")
   rawSpace     String? @map("raw_space")
+  sqmSpace     String? @map("sqm_space") // captured when a lead is marked Converted
   address      String?
   city         String?
   state        String?
@@ -430,9 +436,11 @@ model LeadFollowup {
   status       FollowupStatus @default(PENDING)
   note         String?
   completedAt  DateTime?      @map("completed_at")
-  // Set once the SMS reminder has gone out, so the reminder job never double-sends.
-  // Cleared when the follow-up is rescheduled.
-  reminderSentAt DateTime?    @map("reminder_sent_at")
+  // SMS reminder guards — each set once its reminder has gone out (never double-
+  // sends). Cleared when the follow-up is rescheduled. Two reminders per follow-up:
+  // a day-of heads-up and one shortly before the scheduled time.
+  reminderDaySentAt DateTime? @map("reminder_day_sent_at") // day-of reminder
+  reminderSentAt    DateTime? @map("reminder_sent_at")     // just-before reminder
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
@@ -503,6 +511,12 @@ model ExternalLead {
   source        LeadSource @default(WEBSITE)
   sourceChannel String?    @default("POST_SHOW_DOWNLOAD") @map("source_channel")
 
+  // Brochure-lead ownership: assigned to a user who then reclassifies / syncs it.
+  assignedUserId String? @map("assigned_user_id") @db.Uuid
+  assignedUser   User?   @relation("ExternalAssignee", fields: [assignedUserId], references: [id])
+  // Sync lifecycle — set once queued for the cron that pushes to its panel.
+  syncStatus     String? @map("sync_status")
+
   // local-CRM handoff tracking (staging table; null = not yet exported)
   exportedToCrmAt DateTime? @map("exported_to_crm_at")
 
@@ -515,6 +529,7 @@ model ExternalLead {
   @@index([mobile])
   @@index([eventName])
   @@index([exportedToCrmAt])
+  @@index([assignedUserId])
   @@index([createdAt])
   @@map("external_leads")
 }
@@ -571,23 +586,33 @@ model HistoricalRow {
 // sourceLeadId / restoredLeadId are loose references (the original Lead is soft-
 // deleted on archive), so no FK constraints here.
 model HistoricalLead {
-  id             String     @id @default(uuid()) @db.Uuid
-  eventYear      Int        @map("event_year")
-  eventName      String?    @map("event_name")
-  company        String?
-  firstName      String?    @map("first_name")
-  lastName       String?    @map("last_name")
-  designation    String?
-  email          String?
-  mobile         String?
-  phone          String?
-  city           String?
-  country        String?
-  status         LeadStatus @default(CONVERTED)
-  sourceLeadId   String?    @map("source_lead_id") @db.Uuid
-  restoredLeadId String?    @map("restored_lead_id") @db.Uuid
-  archivedById   String?    @map("archived_by_id") @db.Uuid
-  archivedAt     DateTime   @default(now()) @map("archived_at")
+  id                 String     @id @default(uuid()) @db.Uuid
+  eventYear          Int?       @map("event_year")
+  eventName          String?    @map("event_name")
+  company            String?
+  name               String?
+  designation        String?
+  email              String?
+  mobile             String?
+  city               String?
+  country            String?
+  status             LeadStatus @default(CONVERTED)
+  sourceLeadId       String?    @map("source_lead_id") @db.Uuid
+  restoredLeadId     String?    @map("restored_lead_id") @db.Uuid
+  archivedById       String?    @map("archived_by_id") @db.Uuid
+  archivedAt         DateTime   @default(now()) @map("archived_at")
+  // Master-import / classification fields (added via prisma/manual/historical_master.sql)
+  histCode           String?    @map("hist_code")
+  branchOffice       String?    @map("branch_office")
+  assignedTo         String?    @map("assigned_to")
+  assignedUserId     String?    @map("assigned_user_id") @db.Uuid
+  assignedUser       User?      @relation("HistoricalAssignee", fields: [assignedUserId], references: [id])
+  industry           String?
+  remark             String?
+  spaceSqm           String?    @map("space_sqm")
+  dateOfConfirmation DateTime?  @map("dateofconfirmation") @db.Date
+  specialRemarks     String?    @map("specialremarks")
+  exhHistory         Json       @default("[]") @map("exh_history") // [{ year, sqm_spo }]
 
   @@index([eventYear])
   @@index([email])

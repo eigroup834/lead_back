@@ -36,8 +36,8 @@ export type PermissionKey = (typeof PERMISSIONS)[number]['key'];
 export const ROLES = [
   { name: 'SUPER_ADMIN', label: 'Super Admin', level: 1 },
   { name: 'HEAD', label: 'Head', level: 2 },
-  { name: 'TEAM_LEADER', label: 'Team Leader', level: 3 },
-  { name: 'SALES_EXECUTIVE', label: 'Sales Executive', level: 4 },
+  // Kept internal name SALES_EXECUTIVE for stable references; label shown as Group Manager.
+  { name: 'SALES_EXECUTIVE', label: 'Group Manager', level: 4 },
 ] as const;
 
 const ALL = PERMISSIONS.map((p) => p.key);
@@ -50,11 +50,6 @@ export const ROLE_MATRIX: Record<string, PermissionKey[] | '*'> = {
     'historical.view', 'historical.manage',
     'user.view', 'user.create', 'user.update',
     'dashboard.view', 'analytics.view', 'report.export',
-  ],
-  TEAM_LEADER: [
-    'lead.view', 'lead.create', 'lead.edit', 'lead.assign', 'lead.note', 'lead.followup',
-    'historical.view', 'historical.manage',
-    'user.view', 'dashboard.view', 'analytics.view',
   ],
   SALES_EXECUTIVE: [
     'lead.view', 'lead.edit', 'lead.note', 'lead.followup', 'dashboard.view',

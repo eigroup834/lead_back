@@ -1,16 +1,15 @@
 import { env } from '@config/env';
 import { logger } from '@config/logger';
 
-// Provider-agnostic SMS sender.
+// SMS sender for SmartPing / SPARC (pgapi.sparc.smartping.io).
 //
-// ⚠️ ADAPT HERE when the SMS panel credentials arrive: `dispatch()` below is the
-// only function that talks to the provider. Most Indian panels take either a GET
-// with query params or a POST with JSON — set SMS_API_URL and adjust the payload
-// keys to match the panel's documented contract. Everything else stays as-is.
+// It's a GET with query params: username, password, from (DLT header), text,
+// to (10-digit), and the DLT content/entity ids. `dispatch()` is the only
+// function that talks to the provider.
 //
-// While SMS_ENABLED=false (or the URL/key is missing) sending is a dry run: the
-// message is logged, nothing leaves the server, and callers still get ok:true so
-// reminder bookkeeping can be exercised end-to-end before go-live.
+// While SMS_ENABLED=false (or username/password missing) sending is a dry run:
+// the message is logged, nothing leaves the server, and callers still get
+// ok:true so reminder bookkeeping can be exercised end-to-end before go-live.
 
 export interface SmsResult {
   ok: boolean;
@@ -34,33 +33,36 @@ export function normalizePhone(raw: string): string | null {
 }
 
 function isConfigured(): boolean {
-  return Boolean(env.SMS_ENABLED && env.SMS_API_URL && env.SMS_API_KEY);
+  return Boolean(env.SMS_ENABLED && env.SMS_API_URL && env.SMS_USERNAME && env.SMS_PASSWORD);
 }
 
-async function dispatch(to: string, message: string): Promise<SmsResult> {
+async function dispatch(to: string, text: string): Promise<SmsResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), env.SMS_TIMEOUT_MS);
   try {
-    const res = await fetch(env.SMS_API_URL!, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+    // SmartPing expects the bare 10-digit number. Build the query with
+    // encodeURIComponent so spaces are %20 (not '+') — matching the panel's curl.
+    const query = Object.entries({
+      username: env.SMS_USERNAME,
+      password: env.SMS_PASSWORD,
+      unicode: 'false',
+      from: env.SMS_SENDER_ID,
+      text,
+      to: to.slice(-10),
+      dltContentId: env.SMS_DLT_CONTENT_ID,
+      dltPrincipalEntityId: env.SMS_DLT_ENTITY_ID,
+    })
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join('&');
+    const res = await fetch(`${env.SMS_API_URL}?${query}`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
       signal: controller.signal,
-      // Payload keys follow the common Indian-panel shape. Rename to match the
-      // provider's docs when the credentials land.
-      body: JSON.stringify({
-        apikey: env.SMS_API_KEY,
-        secret: env.SMS_API_SECRET,
-        sender: env.SMS_SENDER_ID,
-        entity_id: env.SMS_ENTITY_ID,
-        template_id: env.SMS_TEMPLATE_ID,
-        to,
-        message,
-      }),
     });
 
-    const text = await res.text();
-    if (!res.ok) return { ok: false, error: `provider ${res.status}: ${text.slice(0, 200)}` };
-    return { ok: true, providerId: text.slice(0, 120) };
+    const body = await res.text();
+    if (!res.ok) return { ok: false, error: `provider ${res.status}: ${body.slice(0, 200)}` };
+    return { ok: true, providerId: body.slice(0, 160) };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     return { ok: false, error };
