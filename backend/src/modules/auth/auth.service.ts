@@ -22,7 +22,6 @@ export const authService = {
     const user = await prisma.user.findFirst({
       where: { email: input.email, deletedAt: null },
     });
-    // Constant-ish behavior: always run a compare to reduce user-enumeration timing.
     const valid = user ? await bcrypt.compare(input.password, user.passwordHash) : false;
     if (!user || !valid) throw AppError.unauthorized('Invalid credentials');
     if (user.status !== 'ACTIVE') throw AppError.forbidden('Account is not active');
@@ -48,7 +47,6 @@ export const authService = {
     const result = await tokenService.rotateRefreshToken(rawToken, ctx);
     if (!result.ok) {
       if (result.reason === 'reuse') {
-        // Bust permission cache to force re-auth everywhere.
         await cache.del(cacheKeys.permissions(result.userId));
       }
       throw AppError.unauthorized('Invalid refresh token');

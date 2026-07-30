@@ -7,8 +7,6 @@ import { downloadCreateDate } from '@services/sourceDb.service';
 
 function mapRow(r: SourceRow) {
   return {
-    // The source `id` (BIGINT) arrives as a string via the mssql driver; the
-    // local `sourceId` column is an Int, so coerce it.
     sourceId: Number(r.id),
     title: r.title,
     company: r.company,
@@ -31,14 +29,12 @@ function mapRow(r: SourceRow) {
     ipAddress: r.ip_address,
     createDate: r.create_date,
     eventName: r.event_name,
-    // Source `status` may arrive as a number; the local column is a String.
     sourceStatus: r.status == null ? null : String(r.status),
     source: 'WEBSITE' as const,
-    sourceChannel: 'SPACE_BOOKING' as const, // exhi_reg = space booking flow
+    sourceChannel: 'SPACE_BOOKING' as const,
   };
 }
 
-// Split a single "name" field into first/last on the first whitespace run.
 function splitName(name: string | null): { firstName: string | null; lastName: string | null } {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return { firstName: null, lastName: null };
@@ -49,9 +45,6 @@ function splitName(name: string | null): { firstName: string | null; lastName: s
 
 type ExternalCategory = 'VISITOR' | 'SPEAKER' | 'DELEGATE' | 'OTHER';
 
-// Classify a post-show download row by its business_interest. "Exhibitor" leads
-// belong in the exhibitor CRM (Lead table); everything else is staged in
-// ExternalLead for the local CRM.
 function classifyDownload(r: DownloadSourceRow): 'EXHIBITOR' | ExternalCategory {
   switch ((r.business_interest ?? '').trim().toLowerCase()) {
     case 'exhibitor':
@@ -67,9 +60,6 @@ function classifyDownload(r: DownloadSourceRow): 'EXHIBITOR' | ExternalCategory 
   }
 }
 
-// Post-show Exhibitor download row -> Lead. download_reg has messy/mismatched
-// columns (e.g. junk in `country`), so we map only the fields we trust and fold
-// industry/business_interest into remarks.
 function mapDownloadToLead(r: DownloadSourceRow) {
   const { firstName, lastName } = splitName(r.name);
   const remarks = [r.industry ? `Industry: ${r.industry}` : null, r.business_interest ? `Interest: ${r.business_interest}` : null]
@@ -93,8 +83,6 @@ function mapDownloadToLead(r: DownloadSourceRow) {
   };
 }
 
-// Non-exhibitor download row -> ExternalLead (staging). Keeps the full raw row
-// as JSON so nothing is lost before the local-CRM handoff.
 function mapDownloadToExternal(r: DownloadSourceRow, category: ExternalCategory) {
   const { firstName, lastName } = splitName(r.name);
   return {
@@ -112,22 +100,17 @@ function mapDownloadToExternal(r: DownloadSourceRow, category: ExternalCategory)
     eventName: r.event_name,
     ipAddress: r.ip_address,
     createDate: downloadCreateDate(r),
-    // JSON-safe copy (Date -> ISO string, drops undefined) for the Json column.
     raw: JSON.parse(JSON.stringify(r)) as object,
     source: 'WEBSITE' as const,
     sourceChannel: 'POST_SHOW_DOWNLOAD' as const,
   };
 }
 
-// Drop a row only when BOTH its email AND mobile match the same existing lead
-// (or an earlier row in the same batch). Rows missing either field can't be a
-// both-match duplicate, so they always pass through.
 async function dropExistingByContact<T extends { email?: string | null; mobile?: string | null }>(rows: T[]): Promise<T[]> {
   const key = (e: string, m: string) => `${e.trim().toLowerCase()}|||${m.trim()}`;
   const withBoth = rows.filter((r) => r.email && r.mobile);
   if (withBoth.length === 0) return rows;
 
-  // Fetch by email (indexed); the pair check narrows it to exact email+mobile matches.
   const emails = [...new Set(withBoth.map((r) => r.email as string))];
   const existing = await prisma.lead.findMany({
     where: { deletedAt: null, email: { in: emails } },
@@ -141,8 +124,8 @@ async function dropExistingByContact<T extends { email?: string | null; mobile?:
   for (const r of rows) {
     if (r.email && r.mobile) {
       const k = key(r.email, r.mobile);
-      if (seen.has(k)) continue;  // both match → skip
-      seen.add(k);                // prevent an in-batch pair duplicate too
+      if (seen.has(k)) continue;
+      seen.add(k);
     }
     out.push(r);
   }
@@ -150,7 +133,6 @@ async function dropExistingByContact<T extends { email?: string | null; mobile?:
 }
 
 export const syncService = {
-  // Idempotent, resumable, batched import. Returns the run summary.
   async runOnce(): Promise<{ fetched: number; inserted: number; skipped: number }> {
     const startedAt = Date.now();
     const state = await prisma.syncState.upsert({
@@ -173,7 +155,6 @@ export const syncService = {
         return { fetched: 0, inserted: 0, skipped: 0 };
       }
 
-      // De-dup via unique sourceId (skipDuplicates) AND by existing email/mobile.
       const toInsert = await dropExistingByContact(rows.map(mapRow));
       const created = await prisma.lead.createMany({
         data: toInsert,
@@ -216,7 +197,6 @@ export const syncService = {
     }
   },
 
-  // Drains the source in batches until caught up (used by the scheduled job).
   async runUntilCaughtUp(maxBatches = 20): Promise<{ inserted: number; batches: number }> {
     let inserted = 0;
     let batches = 0;
@@ -224,14 +204,11 @@ export const syncService = {
       const res = await this.runOnce();
       inserted += res.inserted;
       batches++;
-      if (res.fetched < env.SYNC_BATCH_SIZE) break; // caught up
+      if (res.fetched < env.SYNC_BATCH_SIZE) break;
     }
     return { inserted, batches };
   },
 
-  // Idempotent, resumable batch of post-show download leads. Routes Exhibitor
-  // rows into Lead and the rest into ExternalLead (staging), advancing a separate
-  // download_reg cursor. Returns the run summary.
   async runDownloadOnce(): Promise<{ fetched: number; insertedLeads: number; insertedExternal: number; skipped: number }> {
     const startedAt = Date.now();
     const state = await prisma.syncState.upsert({
@@ -254,7 +231,6 @@ export const syncService = {
         return { fetched: 0, insertedLeads: 0, insertedExternal: 0, skipped: 0 };
       }
 
-      // Split the batch: Exhibitor -> Lead, everything else -> ExternalLead.
       const leadRows = [];
       const externalRows = [];
       for (const r of rows) {
@@ -308,7 +284,6 @@ export const syncService = {
     }
   },
 
-  // Drains the post-show download source in batches until caught up.
   async runDownloadUntilCaughtUp(maxBatches = 20): Promise<{ insertedLeads: number; insertedExternal: number; batches: number }> {
     let insertedLeads = 0;
     let insertedExternal = 0;
@@ -318,7 +293,7 @@ export const syncService = {
       insertedLeads += res.insertedLeads;
       insertedExternal += res.insertedExternal;
       batches++;
-      if (res.fetched < env.SYNC_BATCH_SIZE) break; // caught up
+      if (res.fetched < env.SYNC_BATCH_SIZE) break;
     }
     return { insertedLeads, insertedExternal, batches };
   },

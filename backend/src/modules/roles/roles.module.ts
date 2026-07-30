@@ -21,15 +21,11 @@ const idParam = z.object({ id: z.string().uuid() });
 const router = Router();
 router.use(authenticate);
 
-// ----- permissions catalog (dynamic, from DB) -----
 router.get('/permissions/all', requirePermission('role.manage'), asyncHandler(async (_req, res) => {
   const perms = await prisma.permission.findMany({ orderBy: [{ module: 'asc' }, { key: 'asc' }] });
   return ok(res, perms);
 }));
 
-// ----- roles -----
-// Also readable by whoever can create or edit users — they need the list to
-// populate the role picker, and can't manage the matrix without role.manage.
 router.get('/', requireAnyPermission('role.manage', 'user.create', 'user.update'), asyncHandler(async (_req, res) => {
   const roles = await prisma.role.findMany({
     where: { deletedAt: null },
@@ -48,7 +44,6 @@ router.post('/', requirePermission('role.manage'), validate({ body: createSchema
   return created(res, role);
 }));
 
-// Dynamic role→permission matrix update (no hardcoding).
 router.patch('/:id/permissions', requirePermission('role.manage'), validate({ params: idParam, body: setPermsSchema }), asyncHandler(async (req, res) => {
   const role = await prisma.role.findUnique({ where: { id: req.params.id } });
   if (!role) throw AppError.notFound('Role not found');
@@ -61,7 +56,6 @@ router.patch('/:id/permissions', requirePermission('role.manage'), validate({ pa
     }),
   ]);
 
-  // Bust all permission caches — affected users must pick up the new matrix.
   await cache.delPattern('perm:*');
   return ok(res, { updated: true });
 }));

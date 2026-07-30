@@ -10,7 +10,6 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding RBAC + bootstrap admin...');
 
-  // 1) Permissions
   for (const p of PERMISSIONS) {
     await prisma.permission.upsert({
       where: { key: p.key },
@@ -19,7 +18,6 @@ async function main() {
     });
   }
 
-  // 2) Roles + matrix
   for (const r of ROLES) {
     const role = await prisma.role.upsert({
       where: { name: r.name },
@@ -30,7 +28,6 @@ async function main() {
     const keys = resolveMatrix(r.name);
     const perms = await prisma.permission.findMany({ where: { key: { in: keys } } });
 
-    // reset + re-apply matrix
     await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     await prisma.rolePermission.createMany({
       data: perms.map((perm) => ({ roleId: role.id, permissionId: perm.id })),
@@ -39,7 +36,6 @@ async function main() {
     console.log(`  • ${r.name}: ${perms.length} permissions`);
   }
 
-  // 3) Department + bootstrap super admin
   const dept = await prisma.department.upsert({
     where: { name: 'Headquarters' },
     update: {},
@@ -72,7 +68,6 @@ async function main() {
     create: { userId: admin.id, roleId: superAdminRole.id },
   });
 
-  // 4) Sync cursor row
   await prisma.syncState.upsert({
     where: { source: 'exhi_reg' },
     update: {},

@@ -11,13 +11,11 @@ async function bootstrap() {
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {
-    logger.info(`🚀 API listening on http://localhost:${env.PORT}${env.API_PREFIX}`);
-    logger.info(`📚 Docs at http://localhost:${env.PORT}/api/docs`);
+    logger.info(`API listening on http://localhost:${env.PORT}${env.API_PREFIX}`);
+    logger.info(`Docs at http://localhost:${env.PORT}/api/docs`);
   });
 
-  // Lead sync runs in-process on a timer (no Redis / no separate worker).
   startSyncScheduler();
-  // Follow-up SMS reminders — same in-process model.
   startFollowupReminderScheduler();
 
   const shutdown = async (signal: string) => {
@@ -29,7 +27,6 @@ async function bootstrap() {
       await disconnectRedis();
       process.exit(0);
     });
-    // Force-exit if connections hang
     setTimeout(() => process.exit(1), 10_000).unref();
   };
 

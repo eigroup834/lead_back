@@ -3,7 +3,6 @@ export interface AuthUser {
   email: string;
   firstName: string;
   lastName: string;
-  // lowest role level the user holds (1 = Super Admin ... 4 = Executive)
   level: number;
   roles: string[];
   permissions: string[];
@@ -12,7 +11,7 @@ export interface AuthUser {
 }
 
 export interface JwtAccessPayload {
-  sub: string; // user id
+  sub: string;
   email: string;
   level: number;
   type: 'access';

@@ -2,7 +2,6 @@ import sql from 'mssql';
 import { env } from '@config/env';
 import { logger } from '@config/logger';
 
-// Lazy, pooled, read-only connection to the source website DB (SQL Server).
 let pool: sql.ConnectionPool | null = null;
 
 async function getPool(): Promise<sql.ConnectionPool> {
@@ -46,9 +45,6 @@ export interface SourceRow {
   status: string | null;
 }
 
-// Post-show download registrations (dbo.download_reg). Independent id sequence
-// and a different shape from exhi_reg. Loosely typed because we SELECT * to keep
-// any extra source columns for the ExternalLead raw payload.
 export interface DownloadSourceRow {
   id: number;
   name: string | null;
@@ -60,19 +56,15 @@ export interface DownloadSourceRow {
   business_interest: string | null;
   event_name: string | null;
   ip_address: string | null;
-  // download_reg carries its timestamp in `date`; its `create_date` column
-  // exists but is always null. Read `date` first — see downloadCreateDate().
   date: Date | null;
   create_date: Date | null;
   [key: string]: unknown;
 }
 
-/** The registration timestamp of a post-show row, whichever column holds it. */
 export const downloadCreateDate = (r: DownloadSourceRow): Date | null =>
   r.date ?? r.create_date ?? null;
 
 export const sourceDb = {
-  // Incremental fetch: only rows with id greater than the cursor, capped to batchSize.
   async fetchNewLeads(lastSyncedId: number, batchSize: number): Promise<SourceRow[]> {
     const p = await getPool();
     const result = await p
@@ -91,7 +83,6 @@ export const sourceDb = {
     return result.recordset;
   },
 
-  // Incremental fetch of post-show download registrations (own cursor).
   async fetchNewDownloadLeads(lastSyncedId: number, batchSize: number): Promise<DownloadSourceRow[]> {
     const p = await getPool();
     const result = await p

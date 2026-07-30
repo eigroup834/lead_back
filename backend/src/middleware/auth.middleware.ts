@@ -5,9 +5,8 @@ import { prisma } from '@config/prisma';
 import { AppError } from '@utils/AppError';
 import type { AuthUser } from '@/types';
 
-const PERM_TTL = 300; // seconds
+const PERM_TTL = 300;
 
-// Loads the user's effective roles/permissions (cached in Redis).
 export async function loadAuthUser(userId: string): Promise<AuthUser | null> {
   return cache.remember<AuthUser | null>(cacheKeys.permissions(userId), PERM_TTL, async () => {
     const user = await prisma.user.findFirst({

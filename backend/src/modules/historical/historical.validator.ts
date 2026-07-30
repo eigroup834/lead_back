@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-// Lead fields a historical-sheet column can be mapped onto. These are the "basic
-// fields" that stay the same across every rep's differently-shaped spreadsheet.
 export const MAPPABLE_LEAD_FIELDS = [
   'company', 'firstName', 'lastName', 'designation',
   'email', 'mobile', 'phone', 'website',
@@ -12,13 +10,10 @@ export type MappableLeadField = (typeof MAPPABLE_LEAD_FIELDS)[number];
 
 const MAX_ROWS = 20000;
 
-// mapping: { leadField -> sheet column header }. Only known lead fields are allowed
-// as keys; the value is whatever the rep named that column.
 const mappingSchema = z
   .record(z.enum(MAPPABLE_LEAD_FIELDS), z.string().trim().max(300))
   .optional();
 
-// One parsed sheet row: an object keyed by the sheet's own column headers.
 const rowDataSchema = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));
 
 export const createUploadSchema = z.object({
@@ -40,7 +35,6 @@ export const updateUploadSchema = z
   });
 export type UpdateUploadInput = z.infer<typeof updateUploadSchema>;
 
-// Optional per-conversion overrides / classification.
 const convertOverrides = z
   .object({
     company: z.string().trim().max(200).optional(),
@@ -66,7 +60,6 @@ export const convertRowSchema = z.object({
 });
 export type ConvertRowInput = z.infer<typeof convertRowSchema>;
 
-// Bulk convert: explicit rowIds, or all not-yet-converted rows when omitted.
 export const convertBulkSchema = z.object({
   rowIds: z.array(z.string().uuid()).max(MAX_ROWS).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
@@ -83,10 +76,6 @@ export type ListRowsQuery = z.infer<typeof listRowsQuery>;
 export const idParam = z.object({ id: z.string().uuid() });
 export const uploadRowParams = z.object({ id: z.string().uuid(), rowId: z.string().uuid() });
 
-// -------- Historical leads (year-tagged archive of converted leads) --------
-
-// Columns the archive table can be sorted by. 'assignedUser' sorts through the
-// relation (see HISTORICAL_RELATION_SORTS in historical.service).
 export const HISTORICAL_SORTABLE = [
   'archivedAt', 'eventYear', 'company', 'name', 'designation', 'email', 'mobile',
   'city', 'country', 'remark', 'assignedUser',
@@ -97,10 +86,8 @@ export const listHistoricalLeadsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   q: z.string().trim().max(120).optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
-  assigneeId: z.string().uuid().optional(), // managers: filter by team member
+  assigneeId: z.string().uuid().optional(),
   eventName: z.string().trim().max(200).optional(),
-  // Event filter's "(No event name)" option — archived leads whose source lead
-  // carried no event name. Separate flag so it can't collide with a real name.
   noEventName: z.coerce.boolean().optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
@@ -109,13 +96,11 @@ export const listHistoricalLeadsQuery = z.object({
 });
 export type ListHistoricalLeadsQuery = z.infer<typeof listHistoricalLeadsQuery>;
 
-// Move historical lead(s) back to Lead Management as fresh leads.
 export const restoreHistoricalSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(5000),
 });
 export type RestoreHistoricalInput = z.infer<typeof restoreHistoricalSchema>;
 
-// Manually add a historical lead (from the Add Lead page).
 export const createHistoricalLeadSchema = z
   .object({
     company: z.string().trim().max(200).optional(),
@@ -134,7 +119,6 @@ export const createHistoricalLeadSchema = z
   });
 export type CreateHistoricalLeadInput = z.infer<typeof createHistoricalLeadSchema>;
 
-// Edit any field on a historical lead. All optional; only provided fields change.
 const exhHistoryEntry = z.object({
   year: z.coerce.number().int().min(1900).max(2100),
   sqm_spo: z.string().trim().max(200),

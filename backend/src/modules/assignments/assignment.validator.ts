@@ -12,13 +12,11 @@ export const assignBulkSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
-// Auto assignment: round-robin across a pool of executives.
 export const autoAssignSchema = z.object({
   leadIds: z.array(z.string().uuid()).min(1).max(5000),
-  // optional explicit pool; otherwise resolved from team/department
   poolUserIds: z.array(z.string().uuid()).min(1).optional(),
   teamId: z.string().uuid().optional(),
-  strategy: z.enum(['ROUND_ROBIN']).default('ROUND_ROBIN'), // SKILL_BASED / TERRITORY_BASED = future
+  strategy: z.enum(['ROUND_ROBIN']).default('ROUND_ROBIN'),
 });
 
 export type AssignSingleInput = z.infer<typeof assignSingleSchema>;

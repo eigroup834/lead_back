@@ -24,6 +24,7 @@ import {
 } from '@/features/dashboard/dashboardApi';
 import type { TeamPerf } from '@/features/types';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
+import PageHeader from '@/components/PageHeader';
 
 type TeamSortKey = 'name' | 'assigned' | 'calls' | 'followupsDone' | 'converted' | 'conversionRate';
 const TEAM_SORT_VALUE: Record<TeamSortKey, (t: TeamPerf) => string | number> = {
@@ -63,12 +64,12 @@ export default function AnalyticsPage() {
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5">Analytics</Typography>
-        {hasFilter && <Chip color="primary" label="Filters applied" size="small" />}
-      </Stack>
+      <PageHeader
+        title="Analytics"
+        subtitle="Pipeline performance and team conversion across the selected period."
+        actions={hasFilter && <Chip color="primary" label="Filters applied" size="small" />}
+      />
 
-      {/* Filter bar */}
       <Card sx={{ mb: 2.5 }}>
         <Toolbar sx={{ gap: 1.5, flexWrap: 'wrap', py: 2 }}>
           <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} sx={{ width: 160 }} />
@@ -86,7 +87,6 @@ export default function AnalyticsPage() {
         </Toolbar>
       </Card>
 
-      {/* Summary cards reflect filters */}
       <Grid container spacing={2.5} sx={{ mb: 0.5 }}>
         <Grid item xs={6} md={2.4}><StatCard label="Total" value={s?.total} icon={GroupsIcon} loading={sLoading} /></Grid>
         <Grid item xs={6} md={2.4}><StatCard label="Assigned" value={s?.assigned} icon={AssignmentTurnedInIcon} color="success.main" loading={sLoading} /></Grid>
@@ -96,7 +96,6 @@ export default function AnalyticsPage() {
       </Grid>
 
       <Grid container spacing={2.5} sx={{ mt: 0.5 }}>
-        {/* Team performance */}
         <Grid item xs={12} md={7}>
           <ChartCard title="Team Performance — assigned vs converted" height={340}>
             {teamLoading ? <Stack alignItems="center" justifyContent="center" sx={{ height: '100%' }}><CircularProgress /></Stack> : (
@@ -115,7 +114,6 @@ export default function AnalyticsPage() {
           </ChartCard>
         </Grid>
 
-        {/* Leaderboard */}
         <Grid item xs={12} md={5}>
           <Card sx={{ height: '100%' }}>
             <CardHeader title="Leaderboard" titleTypographyProps={{ variant: 'h6' }} />
@@ -139,7 +137,6 @@ export default function AnalyticsPage() {
           </Card>
         </Grid>
 
-        {/* Monthly trend */}
         <Grid item xs={12} md={8}>
           <ChartCard title="Monthly Trend — leads vs conversions" height={300}>
             <ResponsiveContainer>
@@ -155,7 +152,6 @@ export default function AnalyticsPage() {
           </ChartCard>
         </Grid>
 
-        {/* Funnel */}
         <Grid item xs={12} md={4}>
           <ChartCard title="Status Funnel" height={300}>
             <ResponsiveContainer>
@@ -169,7 +165,6 @@ export default function AnalyticsPage() {
           </ChartCard>
         </Grid>
 
-        {/* Detail table */}
         <Grid item xs={12}>
           <Card>
             <CardHeader title="Team Performance — detail" titleTypographyProps={{ variant: 'h6' }} />

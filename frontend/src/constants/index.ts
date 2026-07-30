@@ -132,10 +132,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Settings', path: '/settings', icon: SettingsIcon, maxLevel: 1 },
 ];
 
-// Where a user lands on "/" and straight after signing in. The Dashboard is
-// Super Admin only, so everyone else starts on their own Assigned Leads.
 export const landingPath = (level: number) => (level === 1 ? '/dashboard' : '/leads/assigned');
 
-// The leads list to send a user back to. Lead Management is levels 1–2 only, so
-// sending anyone else there lands them on a 403 instead of a list.
 export const leadsListPath = (level: number) => (level <= 2 ? '/leads' : '/leads/assigned');

@@ -11,9 +11,6 @@ import { followupSweepProcessor } from '@jobs/followupSweep.processor';
 async function bootstrap() {
   await connectPrisma();
 
-  // NOTE: lead sync is NOT here — it runs in-process in the API server
-  // (src/jobs/sync.scheduler.ts). This worker only handles export/notification/
-  // maintenance, which still use BullMQ + Redis. It is optional to run.
   const workers = [
     new Worker(QUEUES.EXPORT, exportProcessor, { connection: queueConnection, concurrency: 2 }),
     new Worker(QUEUES.NOTIFICATION, notificationProcessor, { connection: queueConnection, concurrency: 5 }),

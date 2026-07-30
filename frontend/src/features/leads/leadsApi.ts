@@ -2,7 +2,6 @@ import { api } from '@/app/api';
 import type { ApiEnvelope, Lead, LeadDetail, PageMeta } from '@/features/types';
 import type { ExternalLeadType } from '@/constants';
 
-// A lead whose company resembles one or more archived historical records.
 export interface HistoricalMatch {
   leadId: string;
   company: string;
@@ -11,7 +10,6 @@ export interface HistoricalMatch {
     company: string | null;
     eventYear: number | null;
     assignedTo: string | null;
-    /** Trigram similarity, 0–1. */
     score: number;
   }>;
 }
@@ -39,8 +37,6 @@ export const leadsApi = api.injectEndpoints({
       query: (params) => ({ url: '/leads', params }),
       providesTags: ['Leads'],
     }),
-    // Pre-assignment duplicate check: which of these leads' companies already
-    // look like records in Historical Data.
     historicalMatches: build.mutation<
       ApiEnvelope<{ threshold: number; matches: HistoricalMatch[] }>,
       { leadIds: string[] }
@@ -55,8 +51,6 @@ export const leadsApi = api.injectEndpoints({
       query: (body) => ({ url: '/leads', method: 'POST', body }),
       invalidatesTags: ['Leads', 'Dashboard'],
     }),
-    // Bulk import from a spreadsheet. Rows are validated individually server-side;
-    // `errors` reports the spreadsheet row number of anything that didn't import.
     bulkImportLeads: build.mutation<
       ApiEnvelope<{ created: number; failed: number; total: number; errors: Array<{ row: number; message: string }> }>,
       { rows: Array<Record<string, unknown>>; assignToId?: string; skipDuplicates?: boolean }
@@ -96,8 +90,6 @@ export const leadsApi = api.injectEndpoints({
       query: (body) => ({ url: '/leads/assign/auto', method: 'POST', body }),
       invalidatesTags: ['Leads', 'Dashboard'],
     }),
-    // Archive converted leads into the year-tagged Historical store and remove them
-    // from active Lead Management. Backend only archives CONVERTED leads (others skipped).
     archiveToHistorical: build.mutation<
       ApiEnvelope<{ archived: number; skipped: number; total: number }>,
       { leadIds: string[]; eventYear: number }

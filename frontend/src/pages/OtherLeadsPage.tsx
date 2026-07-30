@@ -23,8 +23,8 @@ import {
 } from '@/features/external/externalApi';
 import { useListUsersQuery } from '@/features/adminApi';
 import { SortableCell, useSort } from '@/components/SortableCell';
+import PageHeader from '@/components/PageHeader';
 
-// Sort keys accepted by /external-leads (EXTERNAL_SORTABLE on the API).
 type ExternalSortKey =
   | 'createdAt' | 'createDate' | 'company' | 'category' | 'email' | 'mobile'
   | 'designation' | 'eventName' | 'assignedUser';
@@ -131,14 +131,10 @@ export default function OtherLeadsPage() {
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Box>
-          <Typography variant="h5">Brochure Data</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Visitor, delegate & speaker leads staged for the local CRM. Reclassify any as an exhibitor lead.
-          </Typography>
-        </Box>
-      </Stack>
+      <PageHeader
+        title="Brochure Data"
+        subtitle="Visitor, delegate & speaker leads staged for the local CRM. Reclassify any as an exhibitor lead."
+      />
 
       <Card>
         <Toolbar sx={{ gap: 1.5, flexWrap: 'wrap', py: 2, '& .MuiInputBase-root': { height: 40 } }}>

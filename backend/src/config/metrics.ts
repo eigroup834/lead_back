@@ -1,6 +1,5 @@
 import client from 'prom-client';
 
-// Prometheus-ready metrics registry. Exposed at GET /metrics.
 export const registry = new client.Registry();
 client.collectDefaultMetrics({ register: registry });
 

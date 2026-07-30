@@ -18,8 +18,6 @@ export const tokenService = {
     return jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtAccessPayload;
   },
 
-  // Issue a refresh token: random secret returned to the client, only its
-  // hash is persisted. `familyId` ties rotations together for reuse detection.
   async issueRefreshToken(userId: string, familyId: string, ctx: { ip?: string; userAgent?: string }) {
     const raw = randomToken();
     await prisma.refreshToken.create({
@@ -35,8 +33,6 @@ export const tokenService = {
     return raw;
   },
 
-  // Validate + rotate. If a previously-revoked token is reused, revoke the
-  // entire family (token theft mitigation).
   async rotateRefreshToken(rawToken: string, ctx: { ip?: string; userAgent?: string }) {
     const tokenHash = sha256(rawToken);
     const existing = await prisma.refreshToken.findUnique({ where: { tokenHash } });
@@ -46,7 +42,6 @@ export const tokenService = {
     }
 
     if (existing.revokedAt) {
-      // Reuse of an already-rotated token => compromise. Burn the family.
       await prisma.refreshToken.updateMany({
         where: { familyId: existing.familyId, revokedAt: null },
         data: { revokedAt: new Date() },
@@ -54,7 +49,6 @@ export const tokenService = {
       return { ok: false as const, reason: 'reuse' as const, userId: existing.userId };
     }
 
-    // Rotate: revoke current, issue replacement in the same family.
     await prisma.refreshToken.update({
       where: { tokenHash },
       data: { revokedAt: new Date() },

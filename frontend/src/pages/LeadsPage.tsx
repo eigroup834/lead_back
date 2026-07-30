@@ -17,6 +17,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DownloadIcon from '@mui/icons-material/Download';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import StatusChip from '@/components/StatusChip';
+import PageHeader from '@/components/PageHeader';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import {
   LEAD_SOURCE_CHANNELS, LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES,
@@ -35,19 +36,13 @@ import { useDashFiltersQuery } from '@/features/dashboard/dashboardApi';
 import type { Lead } from '@/features/types';
 import ClearIcon from '@mui/icons-material/Clear';
 
-
 const ALL_COLUMNS = [
-  // Sorts by createdAt, not createDate: createDate is null on a good share of
-  // leads (including synced ones), and nulls-last would park those at the bottom
-  // in both directions — so today's leads would never reach the top.
   { key: 'date', label: 'Lead Date', sort: 'createdAt' },
   { key: 'company', label: 'Company', sort: 'company' },
   { key: 'name', label: 'Contact', sort: 'firstName' },
   { key: 'email', label: 'Email', sort: 'email' },
   { key: 'mobile', label: 'Mobile', sort: 'mobile' },
   { key: 'country', label: 'Country', sort: 'country' },
-  // How much shell space the enquiry asked for. Only the space-booking flow
-  // captures it — post-show download rows have no such column.
   { key: 'shellSpace', label: 'Shell Space', sort: 'shellSpace' },
   { key: 'source', label: 'Source', sort: 'sourceChannel' },
   { key: 'status', label: 'Status', sort: 'status' },
@@ -65,12 +60,12 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
   const [sourceChannel, setSourceChannel] = useState('');
-  const [statusFilter, setStatusFilter] = useState(''); // Assigned page only
+  const [statusFilter, setStatusFilter] = useState('');
   const [country, setCountry] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [assignee, setAssignee] = useState('');
-  const [page, setPage] = useState(0); // MUI is 0-based
+  const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
@@ -129,7 +124,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     [leads, selected],
   );
   const visibleCols = ALL_COLUMNS.filter((c) => !hidden[c.key]);
-  // Leads can be assigned to any user, regardless of role. Sorted A→Z by name.
   const assignableUsers = [...(users?.data ?? [])]
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
@@ -144,8 +138,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const openBulkAssign = () => { setAssignMode('bulk'); setAssignLeadId(null); setAssignOpen(true); };
   const openSingleAssign = (lead: Lead) => { setAssignMode('single'); setAssignLeadId(lead.id); setAssignOpen(true); setRowMenu(null); };
 
-  // Before assigning, warn if any of these companies already exist in Historical
-  // Data. The check never blocks assignment — a failure here just proceeds.
   const confirmThenAssign = async () => {
     const ids = assignMode === 'single' && assignLeadId ? [assignLeadId] : selectedIds;
     try {
@@ -154,7 +146,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         setDupWarning({ threshold: res.data.threshold, matches: res.data.matches });
         return;
       }
-    } catch { /* duplicate check is advisory — fall through and assign */ }
+    } catch { }
     await doAssign();
   };
 
@@ -180,7 +172,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     try {
       const params = new URLSearchParams();
       if (debounced) params.set('q', debounced);
-      if (!assignedOnly) params.append('status', 'NEW'); // Lead Management = NEW only
+      if (!assignedOnly) params.append('status', 'NEW');
       else if (statusFilter) params.append('status', statusFilter);
       if (sourceChannel === 'HISTORICAL') params.set('source', 'HISTORICAL');
       else if (sourceChannel) params.set('sourceChannel', sourceChannel);
@@ -227,29 +219,33 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5">{assignedOnly ? 'Assigned Leads' : 'Lead Management'}</Typography>
-        <Stack direction="row" spacing={1}>
-          {canAssignAction && selectedIds.length > 0 && (
-            <Button startIcon={<AssignmentIndIcon />} variant="contained" onClick={openBulkAssign}>
-              {assignVerb} ({selectedIds.length})
-            </Button>
-          )}
-          {canArchive && selectedConverted > 0 && (
-            <Tooltip title="Archive converted leads to Historical Data">
-              <Button startIcon={<Inventory2Icon />} variant="outlined" disabled={archiving} onClick={() => setArchiveOpen(true)}>
-                Move to Historical ({selectedConverted})
+      <PageHeader
+        title={assignedOnly ? 'Assigned Leads' : 'Lead Management'}
+        subtitle={assignedOnly
+          ? 'Leads assigned to your team — open one to log activity and follow-ups.'
+          : 'New leads from the website and manual entry, ready to be assigned.'}
+        actions={(
+          <>
+            {canAssignAction && selectedIds.length > 0 && (
+              <Button startIcon={<AssignmentIndIcon />} variant="contained" onClick={openBulkAssign}>
+                {assignVerb} ({selectedIds.length})
               </Button>
-            </Tooltip>
-          )}
-          <Tooltip title="Columns"><IconButton onClick={(e) => setColAnchor(e.currentTarget)}><ViewColumnIcon /></IconButton></Tooltip>
-          <Tooltip title="Refresh"><IconButton onClick={() => refetch()}><RefreshIcon /></IconButton></Tooltip>
-        </Stack>
-      </Stack>
+            )}
+            {canArchive && selectedConverted > 0 && (
+              <Tooltip title="Archive converted leads to Historical Data">
+                <Button startIcon={<Inventory2Icon />} variant="outlined" disabled={archiving} onClick={() => setArchiveOpen(true)}>
+                  Move to Historical ({selectedConverted})
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip title="Columns"><IconButton onClick={(e) => setColAnchor(e.currentTarget)}><ViewColumnIcon fontSize="small" /></IconButton></Tooltip>
+            <Tooltip title="Refresh"><IconButton onClick={() => refetch()}><RefreshIcon fontSize="small" /></IconButton></Tooltip>
+          </>
+        )}
+      />
 
       <Card>
         <Toolbar sx={{ gap: 1.5, flexWrap: 'wrap', py: 2, '& .MuiInputBase-root': { height: 40 } }}>
-          {/* Primary filters (inline) */}
           <TextField
             size="small" placeholder="Search company, email, name, mobile…"
             value={search} onChange={(e) => { setSearch(e.target.value); resetPaging(); }}
@@ -288,7 +284,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
 
           <Box sx={{ flex: 1 }} />
 
-          {/* Right side: status + actions */}
           {isFetching && <CircularProgress size={20} />}
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', fontWeight: 500 }}>
             {total.toLocaleString()} total
@@ -313,7 +308,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         </Toolbar>
         <Divider />
 
-        {/* Advanced filters popover */}
         <Popover
           open={!!filterAnchor}
           anchorEl={filterAnchor}
@@ -375,7 +369,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
                     </TableCell>
                   )}
                   {visibleCols.map((c) => (
-                    // Lead Management rows aren't clickable; only Assigned Leads opens the detail page.
                     <TableCell
                       key={c.key}
                       sx={assignedOnly ? { cursor: 'pointer' } : undefined}
@@ -410,7 +403,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         />
       </Card>
 
-      {/* row action menu */}
       <Menu anchorEl={rowMenu?.el} open={!!rowMenu} onClose={() => setRowMenu(null)}>
         {assignedOnly && <MenuItem onClick={() => rowMenu && navigate(`/leads/${rowMenu.lead.id}`)}>Open details</MenuItem>}
         {canAssignAction && <MenuItem onClick={() => rowMenu && openSingleAssign(rowMenu.lead)}>{assignVerb}…</MenuItem>}
@@ -426,7 +418,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         ))}
       </Menu>
 
-      {/* convert-to-external confirm dialog */}
       <Dialog open={!!convertTarget} onClose={() => setConvertTarget(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Convert to {convertTarget ? prettyLabel(convertTarget.type) : ''} lead?</DialogTitle>
         <DialogContent>
@@ -457,7 +448,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         </DialogActions>
       </Dialog>
 
-      {/* move-to-historical (archive) dialog */}
       <Dialog open={archiveOpen} onClose={() => setArchiveOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Move {selectedConverted} converted lead(s) to Historical?</DialogTitle>
         <DialogContent>
@@ -486,7 +476,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         </DialogActions>
       </Dialog>
 
-      {/* column visibility */}
       <Menu anchorEl={colAnchor} open={!!colAnchor} onClose={() => setColAnchor(null)}>
         {ALL_COLUMNS.map((c) => (
           <MenuItem key={c.key} onClick={() => setHidden((h) => ({ ...h, [c.key]: !h[c.key] }))}>
@@ -495,7 +484,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         ))}
       </Menu>
 
-      {/* assign dialog (single or bulk) */}
       <Dialog open={assignOpen} onClose={() => setAssignOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>{assignMode === 'single' ? `${assignVerb} lead` : `${assignVerb} ${selectedIds.length} lead(s)`}</DialogTitle>
         <DialogContent>
@@ -521,7 +509,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         </DialogActions>
       </Dialog>
 
-      {/* Already in Historical Data? Warn before assigning, don't block. */}
       <Dialog open={!!dupWarning} onClose={() => setDupWarning(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Already in Historical Data</DialogTitle>
         <DialogContent dividers>
@@ -570,9 +557,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   );
 }
 
-// The lead's own registration date when the source provided one, otherwise the
-// date it reached us. Today and yesterday are labelled so the newest leads are
-// obvious at a glance; the full timestamp is in the tooltip.
 function leadDateCell(l: Lead) {
   const iso = l.createDate ?? l.createdAt;
   const d = new Date(iso);

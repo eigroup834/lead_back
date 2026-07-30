@@ -4,8 +4,6 @@ import { prisma } from '@config/prisma';
 import { notificationQueue } from '@queues/index';
 import { logger } from '@config/logger';
 
-// Flips PENDING follow-ups whose date has passed to OVERDUE and notifies the
-// assignee (in-app). Runs on a schedule from the worker.
 export async function followupSweepProcessor(_job: Job): Promise<unknown> {
   const cutoff = startOfDay(new Date());
 
@@ -21,7 +19,6 @@ export async function followupSweepProcessor(_job: Job): Promise<unknown> {
     data: { status: 'OVERDUE' },
   });
 
-  // notify each assignee how many of theirs went overdue
   const byUser = new Map<string, number>();
   due.forEach((d) => byUser.set(d.assigneeId, (byUser.get(d.assigneeId) ?? 0) + 1));
   for (const [userId, count] of byUser) {

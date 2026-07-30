@@ -4,6 +4,7 @@ import {
   Checkbox, FormControlLabel, Button, Chip, Divider, Stack,
 } from '@mui/material';
 import { useListRolesQuery, useListPermissionsQuery, useSetRolePermissionsMutation } from '@/features/adminApi';
+import PageHeader from '@/components/PageHeader';
 
 export default function RolesPage() {
   const { data: roles } = useListRolesQuery();
@@ -47,7 +48,10 @@ export default function RolesPage() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ mb: 2 }}>Roles & Permissions</Typography>
+      <PageHeader
+        title="Roles & Permissions"
+        subtitle="What each role can do. Changes apply to every user holding that role."
+      />
       <Grid container spacing={2.5}>
         <Grid item xs={12} md={3}>
           <Card>

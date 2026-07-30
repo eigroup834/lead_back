@@ -1,7 +1,5 @@
 import { env } from './env';
 
-// Minimal OpenAPI document. Endpoints can be expanded with swagger-jsdoc
-// annotations per module; this provides the base served at /api/docs.
 export const openapiDocument = {
   openapi: '3.0.3',
   info: {

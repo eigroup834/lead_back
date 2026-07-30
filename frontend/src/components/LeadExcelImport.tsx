@@ -12,7 +12,6 @@ import {
 } from '@/features/leads/leadImport';
 
 const PREVIEW_LIMIT = 8;
-// Columns worth showing in the preview — the full set is too wide to scan.
 const PREVIEW_KEYS = ['company', 'firstName', 'lastName', 'email', 'mobile', 'city', 'country'];
 
 interface ImportResult {

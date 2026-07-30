@@ -11,9 +11,6 @@ router.use(authenticate);
 
 router.get('/logs', requirePermission('lead.sync'), asyncHandler(async (_req, res) => ok(res, await syncService.listLogs())));
 
-// Manually trigger an out-of-band sync (in addition to the interval scheduler).
-// Fire-and-forget: kick the run in the background and respond immediately, so the
-// HTTP request doesn't block on a large import.
 router.post('/run', requirePermission('lead.sync'), asyncHandler(async (_req, res) => {
   const alreadyRunning = isSyncRunning();
   void runSyncNow('manual');

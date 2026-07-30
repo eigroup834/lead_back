@@ -7,8 +7,6 @@ interface Schemas {
   params?: ZodTypeAny;
 }
 
-// Validates + coerces request parts with Zod. Parsed (sanitized) values
-// replace the originals so downstream handlers get typed, trusted input.
 export function validate(schemas: Schemas): RequestHandler {
   return (req, _res, next) => {
     try {

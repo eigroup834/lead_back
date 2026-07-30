@@ -3,10 +3,6 @@ import { env } from '@config/env';
 import { logger } from '@config/logger';
 import { mailService } from '@services/mail.service';
 
-// Assignment emails: the assignee is the To:, every other active user is CC'd.
-// One email per lead (bulk assigning 50 leads sends 50 emails), so this is always
-// dispatched off the request path — see notifyAssignments below.
-
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -64,10 +60,6 @@ function compose(lead: LeadLine, assigneeName: string, assignedByName: string) {
   return { subject: `Lead assigned to ${assigneeName}: ${title}`, text, html };
 }
 
-/**
- * Send one assignment email per lead. Never throws and never blocks the caller —
- * a mail outage must not fail an assignment that has already been committed.
- */
 export function notifyAssignments(leadIds: string[], assignToId: string, assignedById: string): void {
   void (async () => {
     try {
@@ -76,7 +68,6 @@ export function notifyAssignments(leadIds: string[], assignToId: string, assigne
       const [assignee, assignedBy, others, leads] = await Promise.all([
         prisma.user.findUnique({ where: { id: assignToId }, select: { firstName: true, lastName: true, email: true } }),
         prisma.user.findUnique({ where: { id: assignedById }, select: { firstName: true, lastName: true } }),
-        // "CC everyone else active" — the assignee is filtered out by mailService.
         prisma.user.findMany({
           where: { deletedAt: null, status: 'ACTIVE', id: { not: assignToId } },
           select: { email: true },

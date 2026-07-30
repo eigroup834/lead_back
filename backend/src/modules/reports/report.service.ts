@@ -48,7 +48,6 @@ function storagePath(file: string): string {
 }
 
 export const reportService = {
-  // Streams large result sets in batches to keep memory flat (1M+ rows safe).
   async export(format: ExportFormat, filter: ReportFilter, jobId: string): Promise<{ file: string; rows: number }> {
     const where = buildWhere(filter);
     const fileName = `leads-${jobId}.${format === 'excel' ? 'xlsx' : format}`;
@@ -90,7 +89,6 @@ export const reportService = {
       }
       await wb.commit();
     } else {
-      // PDF: summary report (status breakdown) — full row dumps belong in CSV/Excel.
       const grouped = await prisma.lead.groupBy({ by: ['status'], where, _count: { _all: true } });
       const doc = new PDFDocument({ margin: 40 });
       doc.pipe(fs.createWriteStream(outPath));

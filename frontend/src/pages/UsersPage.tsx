@@ -14,6 +14,7 @@ import { useListUsersQuery, useCreateUserMutation, useUpdateUserMutation, useLis
 import { usePermissions } from '@/hooks/usePermissions';
 import { sentenceCase } from '@/constants';
 import { SortableCell, useSort } from '@/components/SortableCell';
+import PageHeader from '@/components/PageHeader';
 
 type UserSortKey = 'firstName' | 'email' | 'phone' | 'status' | 'lastLoginAt' | 'createdAt';
 
@@ -36,7 +37,6 @@ export default function UsersPage() {
   const isSuperAdmin = level === 1;
   const { sort, toggle: toggleSort } = useSort<UserSortKey>({ by: 'createdAt', dir: 'desc' });
   const { data, isFetching } = useListUsersQuery({ sortBy: sort.by, sortDir: sort.dir });
-  // Needed by both the create and edit role pickers.
   const { data: roles } = useListRolesQuery(undefined, { skip: !has('user.create') && !has('user.update') });
   const [createUser, { isLoading, error }] = useCreateUserMutation();
   const [updateUser, { isLoading: isSaving, error: editError }] = useUpdateUserMutation();
@@ -51,7 +51,6 @@ export default function UsersPage() {
   const users = data?.data ?? [];
   const canEdit = has('user.update');
   const colCount = 6 + (canEdit ? 1 : 0) + (isSuperAdmin ? 1 : 0);
-  // Mirrors the API guard: you can't hand out a role that outranks your own.
   const assignableRoles = (roles?.data ?? []).filter((r) => r.level >= level);
 
   const openEdit = (u: UserRow) => {
@@ -67,14 +66,11 @@ export default function UsersPage() {
     const { roleId, ...rest } = editForm;
     await updateUser({
       id: editUser.id, ...rest, phone: rest.phone || null,
-      // Only send roles when actually changed — the API rejects self-edits and
-      // any role that outranks the caller.
       roleIds: roleId && roleId !== editUser.roles[0]?.role.id ? [roleId] : undefined,
     }).unwrap();
     setEditUser(null);
   };
 
-  // Deactivate / reactivate — Super Admin only, confirmed first.
   const toggleStatus = async () => {
     if (!statusTarget) return;
     const next = statusTarget.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
@@ -101,10 +97,13 @@ export default function UsersPage() {
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5">Users</Typography>
-        {has('user.create') && <Button startIcon={<PersonAddIcon />} variant="contained" onClick={() => setOpen(true)}>New User</Button>}
-      </Stack>
+      <PageHeader
+        title="Users"
+        subtitle="Team accounts, their roles and access."
+        actions={has('user.create') && (
+          <Button startIcon={<PersonAddIcon />} variant="contained" onClick={() => setOpen(true)}>New User</Button>
+        )}
+      />
 
       <Card>
         <Table size="small">
@@ -113,7 +112,6 @@ export default function UsersPage() {
               <SortableCell field="firstName" sort={sort} onSort={toggleSort}>Name</SortableCell>
               <SortableCell field="email" sort={sort} onSort={toggleSort}>Email</SortableCell>
               <SortableCell field="phone" sort={sort} onSort={toggleSort}>Phone</SortableCell>
-              {/* Roles is many-to-many — no meaningful column order. */}
               <TableCell sx={{ fontWeight: 700 }}>Roles</TableCell>
               <SortableCell field="status" sort={sort} onSort={toggleSort}>Status</SortableCell>
               <SortableCell field="lastLoginAt" sort={sort} onSort={toggleSort}>Last Login</SortableCell>
@@ -142,7 +140,6 @@ export default function UsersPage() {
                     <Tooltip title="Edit user">
                       <IconButton size="small" onClick={() => openEdit(u)}><EditIcon fontSize="small" /></IconButton>
                     </Tooltip>
-                    {/* Deactivating an account is Super Admin only, and never your own. */}
                     {isSuperAdmin && u.id !== user?.id && (
                       <Tooltip title={u.status === 'ACTIVE' ? 'Deactivate user' : 'Reactivate user'}>
                         <IconButton size="small" onClick={() => setStatusTarget(u)}>
@@ -189,7 +186,6 @@ export default function UsersPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Edit user — contact details + name */}
       <Dialog open={!!editUser} onClose={() => setEditUser(null)} fullWidth maxWidth="sm">
         <DialogTitle>Edit User</DialogTitle>
         <DialogContent>

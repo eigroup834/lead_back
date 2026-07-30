@@ -23,7 +23,6 @@ const exportSchema = z.object({
     .default({}),
 });
 
-// Large exports run through the queue — the request returns a jobId immediately.
 router.post(
   '/export',
   requirePermission('report.export'),
@@ -38,7 +37,6 @@ router.post(
   }),
 );
 
-// Poll job status; when completed, returns the download path.
 router.get(
   '/:jobId',
   requirePermission('report.export'),

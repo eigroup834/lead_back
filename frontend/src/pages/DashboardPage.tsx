@@ -10,6 +10,7 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import StatCard from '@/components/StatCard';
+import PageHeader from '@/components/PageHeader';
 import ChartCard from '@/components/ChartCard';
 import {
   useSummaryQuery, useFunnelQuery, useDailyTrendQuery,
@@ -25,7 +26,7 @@ export default function DashboardPage() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ mb: 3 }}>Dashboard</Typography>
+      <PageHeader title="Dashboard" subtitle="Live pipeline health across every source and team." />
 
       <Grid container spacing={2.5} sx={{ mb: 1 }}>
         <Grid item xs={12} sm={6} md={2}><StatCard label="Total Leads" value={s?.total} icon={GroupsIcon} loading={isLoading} /></Grid>

@@ -11,18 +11,13 @@ async function bustDashboard() {
 
 const ASSIGNEE_SELECT = { id: true, firstName: true, lastName: true };
 
-// Only Super Admin (level 1) sees all brochure leads; everyone else sees only
-// the ones assigned to them.
 function scopeWhere(user: AuthUser): Prisma.ExternalLeadWhereInput {
   return user.level === 1 ? {} : { assignedUserId: user.id };
 }
 
-// Sort keys that aren't scalar columns on ExternalLead.
 const EXTERNAL_RELATION_SORTS: Record<string, (dir: Prisma.SortOrder) => Prisma.ExternalLeadOrderByWithRelationInput> = {
   assignedUser: (dir) => ({ assignedUser: { firstName: dir } }),
 };
-// createdAt and category are required; the rest are nullable and sort blanks
-// last (Prisma rejects `nulls` on required columns).
 const EXTERNAL_NULLABLE_SORTS = new Set(['createDate', 'company', 'email', 'mobile', 'designation', 'eventName']);
 
 function externalOrderBy(q: ListExternalQuery): Prisma.ExternalLeadOrderByWithRelationInput[] {
@@ -32,12 +27,11 @@ function externalOrderBy(q: ListExternalQuery): Prisma.ExternalLeadOrderByWithRe
     : EXTERNAL_NULLABLE_SORTS.has(q.sortBy)
       ? { [q.sortBy]: { sort: q.sortDir, nulls: 'last' } }
       : { [q.sortBy]: q.sortDir }) as Prisma.ExternalLeadOrderByWithRelationInput;
-  return [primary, { id: q.sortDir }]; // id keeps paging stable across ties
+  return [primary, { id: q.sortDir }];
 }
 
 export const externalService = {
   async list(user: AuthUser, q: ListExternalQuery) {
-    // Once queued for sync a lead leaves this list (it's handed off to its panel).
     const where: Prisma.ExternalLeadWhereInput = { deletedAt: null, syncStatus: null, ...scopeWhere(user) };
     if (q.category) where.category = q.category;
     if (q.q) {
@@ -64,7 +58,6 @@ export const externalService = {
     return { items, meta: { page: q.page, limit: q.limit, total, pages: Math.max(1, Math.ceil(total / q.limit)) } };
   },
 
-  // Category counts for the filter chips (scoped + sync-filtered like the list).
   async counts(user: AuthUser) {
     const grouped = await prisma.externalLead.groupBy({
       by: ['category'],
@@ -76,7 +69,6 @@ export const externalService = {
     return out;
   },
 
-  // Assign brochure lead(s) to a user.
   async assign(ids: string[], assignToId: string) {
     const res = await prisma.externalLead.updateMany({
       where: { id: { in: ids }, deletedAt: null },
@@ -85,7 +77,6 @@ export const externalService = {
     return { assigned: res.count, total: ids.length };
   },
 
-  // Queue brochure lead(s) for sync — a cron job later pushes them to their panel.
   async sync(ids: string[]) {
     const res = await prisma.externalLead.updateMany({
       where: { id: { in: ids }, deletedAt: null },
@@ -94,8 +85,6 @@ export const externalService = {
     return { queued: res.count, total: ids.length };
   },
 
-  // Copy one external lead into the Lead table (leadType EXHIBITION) and soft-delete
-  // the staging row, atomically. Shared by single + bulk conversion.
   async convertOne(tx: Prisma.TransactionClient, ext: Prisma.ExternalLeadGetPayload<object>) {
     const created = await tx.lead.create({
       data: {
@@ -118,7 +107,6 @@ export const externalService = {
     return created;
   },
 
-  // Change a brochure lead's category (Visitor/Delegate/Speaker/Other) in place.
   async reclassify(id: string, category: Prisma.ExternalLeadCreateInput['category']) {
     const ext = await prisma.externalLead.findFirst({ where: { id, deletedAt: null } });
     if (!ext) throw AppError.notFound('External lead not found');
@@ -127,7 +115,6 @@ export const externalService = {
     return updated;
   },
 
-  // Reclassify a single non-exhibitor lead as an exhibitor lead.
   async convertToExhibitor(id: string) {
     const ext = await prisma.externalLead.findFirst({ where: { id, deletedAt: null } });
     if (!ext) throw AppError.notFound('External lead not found');
@@ -136,8 +123,6 @@ export const externalService = {
     return lead;
   },
 
-  // Reclassify many at once. Already-converted/deleted ids are silently skipped so a
-  // stale selection never fails the whole batch.
   async bulkConvertToExhibitor(ids: string[]) {
     const rows = await prisma.externalLead.findMany({ where: { id: { in: ids }, deletedAt: null } });
     let converted = 0;

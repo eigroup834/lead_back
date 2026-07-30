@@ -52,7 +52,6 @@ export interface RoleRow {
 
 export const adminApi = api.injectEndpoints({
   endpoints: (build) => ({
-    // followups
     listFollowups: build.query<ApiEnvelope<FollowupRow[]>, { scope?: string; days?: number; assigneeId?: string }>({
       query: (params) => ({ url: '/followups', params }),
       providesTags: ['Followup'],
@@ -65,14 +64,12 @@ export const adminApi = api.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/followups/${id}`, method: 'PATCH', body }),
       invalidatesTags: ['Followup'],
     }),
-    // users
     listUsers: build.query<ApiEnvelope<UserRow[]>, {
       q?: string; page?: number; limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc';
     } | void>({
       query: (params) => ({ url: '/users', params: params || {} }),
       providesTags: ['User'],
     }),
-    // roles + permissions
     listRoles: build.query<ApiEnvelope<RoleRow[]>, void>({ query: () => '/roles', providesTags: ['Role'] }),
     listPermissions: build.query<ApiEnvelope<Array<{ id: string; key: string; module: string }>>, void>({
       query: () => '/roles/permissions/all',
@@ -82,14 +79,12 @@ export const adminApi = api.injectEndpoints({
       query: ({ id, permissionIds }) => ({ url: `/roles/${id}/permissions`, method: 'PATCH', body: { permissionIds } }),
       invalidatesTags: ['Role'],
     }),
-    // create user
     createUser: build.mutation<ApiEnvelope<UserRow>, {
       email: string; phone?: string; password: string; firstName: string; lastName: string; roleIds: string[];
     }>({
       query: (body) => ({ url: '/users', method: 'POST', body }),
       invalidatesTags: ['User'],
     }),
-    // update user (contact details, name, role, and — Super Admin only — status)
     updateUser: build.mutation<ApiEnvelope<UserRow>, {
       id: string; email?: string; phone?: string | null; firstName?: string; lastName?: string;
       roleIds?: string[]; status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
@@ -97,11 +92,9 @@ export const adminApi = api.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/users/${id}`, method: 'PATCH', body }),
       invalidatesTags: ['User'],
     }),
-    // SUPER_ADMIN-only password reveal (lazy, on demand)
     getCredential: build.query<ApiEnvelope<{ password: string | null }>, string>({
       query: (id) => `/users/${id}/credential`,
     }),
-    // sync
     syncLogs: build.query<ApiEnvelope<Array<{
       id: string; status: string; fetchedCount: number; insertedCount: number;
       startedAt: string; finishedAt: string | null; error: string | null;
@@ -113,7 +106,6 @@ export const adminApi = api.injectEndpoints({
       query: () => ({ url: '/sync/run', method: 'POST' }),
       invalidatesTags: ['Sync'],
     }),
-    // notifications
     listNotifications: build.query<ApiEnvelope<Array<{ id: string; title: string; body: string | null; readAt: string | null; createdAt: string }>>, void>({
       query: () => '/notifications',
       providesTags: ['Notification'],

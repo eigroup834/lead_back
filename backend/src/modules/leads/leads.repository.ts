@@ -4,10 +4,6 @@ import { prisma } from '@config/prisma';
 import type { AuthUser } from '@/types';
 import type { ListLeadsQuery } from './leads.validator';
 
-// Row-level scope: who can a given user see?
-// level 1/2 (Super Admin / Head): all leads
-// level 3 (Team Leader): leads assigned to themselves or to their team members
-// level 4 (Sales Executive): only own assigned leads
 async function scopeWhere(user: AuthUser): Promise<Prisma.LeadWhereInput> {
   if (user.level <= 2) return {};
   if (user.level === 3) {
@@ -32,8 +28,6 @@ function filterWhere(q: ListLeadsQuery): Prisma.LeadWhereInput {
   else if (q.assignedUserId) where.assignedUserId = q.assignedUserId;
   else if (q.assigned) where.assignedUserId = { not: null };
   if (q.dateFrom || q.dateTo) {
-    // On the Assigned Leads page, filter by assignment date; otherwise by the
-    // lead's registration date.
     const range: Prisma.DateTimeFilter = {};
     if (q.dateFrom) range.gte = startOfDay(q.dateFrom);
     if (q.dateTo) range.lte = endOfDay(q.dateTo);
@@ -53,13 +47,9 @@ function filterWhere(q: ListLeadsQuery): Prisma.LeadWhereInput {
   return where;
 }
 
-// Sort keys that aren't scalar columns on Lead.
 const RELATION_SORTS: Record<string, (dir: Prisma.SortOrder) => Prisma.LeadOrderByWithRelationInput> = {
   assignedUser: (dir) => ({ assignedUser: { firstName: dir } }),
 };
-// Nullable sortable columns. Blanks are pushed to the end in both directions
-// rather than crowding the top of a descending sort. Prisma rejects `nulls` on
-// required columns (createdAt, status), hence the explicit list.
 const NULLABLE_SORTS = new Set(['createDate', 'company', 'firstName', 'email', 'mobile', 'country', 'sourceChannel', 'shellSpace']);
 
 function orderByOf(q: ListLeadsQuery): Prisma.LeadOrderByWithRelationInput[] {
@@ -69,12 +59,10 @@ function orderByOf(q: ListLeadsQuery): Prisma.LeadOrderByWithRelationInput[] {
     : NULLABLE_SORTS.has(q.sortBy)
       ? { [q.sortBy]: { sort: q.sortDir, nulls: 'last' } }
       : { [q.sortBy]: q.sortDir }) as Prisma.LeadOrderByWithRelationInput;
-  return [primary, { id: q.sortDir }]; // id keeps paging stable across ties
+  return [primary, { id: q.sortDir }];
 }
 
 export const leadsRepository = {
-  // Offset pagination + total count → drives a proper pager (page numbers,
-  // page size, "X–Y of N"). Indexed filters keep this fast at scale.
   async list(user: AuthUser, q: ListLeadsQuery) {
     const scope = await scopeWhere(user);
     const filters = filterWhere(q);
@@ -99,15 +87,14 @@ export const leadsRepository = {
     };
   },
 
-  // All matching rows (no pagination) for export — same scope + filters as list.
   async exportRows(user: AuthUser, q: ListLeadsQuery) {
     const scope = await scopeWhere(user);
     const filters = filterWhere(q);
     const where: Prisma.LeadWhereInput = { AND: [scope, filters] };
     return prisma.lead.findMany({
       where,
-      orderBy: orderByOf(q), // same order the user is looking at on screen
-      take: 50000, // safety cap
+      orderBy: orderByOf(q),
+      take: 50000,
       include: { assignedUser: { select: { firstName: true, lastName: true } } },
     });
   },

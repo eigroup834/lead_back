@@ -1,16 +1,6 @@
 import { env } from '@config/env';
 import { logger } from '@config/logger';
 
-// SMS sender for SmartPing / SPARC (pgapi.sparc.smartping.io).
-//
-// It's a GET with query params: username, password, from (DLT header), text,
-// to (10-digit), and the DLT content/entity ids. `dispatch()` is the only
-// function that talks to the provider.
-//
-// While SMS_ENABLED=false (or username/password missing) sending is a dry run:
-// the message is logged, nothing leaves the server, and callers still get
-// ok:true so reminder bookkeeping can be exercised end-to-end before go-live.
-
 export interface SmsResult {
   ok: boolean;
   dryRun?: boolean;
@@ -18,17 +8,11 @@ export interface SmsResult {
   error?: string;
 }
 
-/**
- * Normalize a phone number to bare digits with a country code.
- * "+91 98765-43210" / "09876543210" / "9876543210" -> "919876543210".
- */
 export function normalizePhone(raw: string): string | null {
   let digits = raw.replace(/\D/g, '');
   if (!digits) return null;
-  // strip a single leading 0 (local trunk prefix)
   if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
   if (digits.length === 10) digits = `${env.SMS_DEFAULT_COUNTRY_CODE}${digits}`;
-  // 10-digit local + CC, or an already-prefixed international number
   return digits.length >= 10 && digits.length <= 15 ? digits : null;
 }
 
@@ -40,8 +24,6 @@ async function dispatch(to: string, text: string): Promise<SmsResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), env.SMS_TIMEOUT_MS);
   try {
-    // SmartPing expects the bare 10-digit number. Build the query with
-    // encodeURIComponent so spaces are %20 (not '+') — matching the panel's curl.
     const query = Object.entries({
       username: env.SMS_USERNAME,
       password: env.SMS_PASSWORD,
@@ -76,7 +58,6 @@ export const smsService = {
     return isConfigured();
   },
 
-  /** Send one SMS. Never throws — always resolves to a result the caller can log. */
   async send(rawPhone: string | null | undefined, message: string): Promise<SmsResult> {
     if (!rawPhone) return { ok: false, error: 'no phone number on record' };
 

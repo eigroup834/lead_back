@@ -23,6 +23,7 @@ import {
 } from '@/features/historical/historicalApi';
 import { useListUsersQuery } from '@/features/adminApi';
 import { SortableCell, useSort } from '@/components/SortableCell';
+import PageHeader from '@/components/PageHeader';
 
 const NO_EVENT = '__NO_EVENT__';
 
@@ -47,7 +48,6 @@ export default function HistoricalPage() {
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
   const [assignee, setAssignee] = useState('');
-  // '' = all events, NO_EVENT = archived without an event name, else the name.
   const [eventName, setEventName] = useState('');
   const [page, setPage] = useState(0);
   const { sort, toggle: toggleSort } = useSort<HistoricalSortKey>({ by: 'eventYear', dir: 'desc' }, () => setPage(0));
@@ -77,7 +77,6 @@ export default function HistoricalPage() {
 
   const rows = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
-  // With a filter on, an empty result means "nothing matched", not "no data yet".
   const anyFilter = Boolean(debounced || assignee || eventName);
   const selectedIds = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected]);
   const canSelect = canRestore;
@@ -135,14 +134,10 @@ export default function HistoricalPage() {
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Box>
-          <Typography variant="h5">Historical Data</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Converted leads archived by event year. Move any back to Lead Management to work them for a new event.
-          </Typography>
-        </Box>
-      </Stack>
+      <PageHeader
+        title="Historical Data"
+        subtitle="Converted leads archived by event year. Move any back to Lead Management to work them for a new event."
+      />
 
       <Card>
         <Toolbar sx={{ gap: 1.5, flexWrap: 'wrap', py: 2, '& .MuiInputBase-root': { height: 40 } }}>
@@ -267,10 +262,10 @@ export default function HistoricalPage() {
                             {canRestore && (
                               <Tooltip title="Move back to Lead Management">
                                 <Button
-                                  size="small" variant="outlined" startIcon={<ReplayIcon />}
+                                  size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }}
                                   onClick={() => setRestoreConfirm({ ids: [r.id], label: `“${r.company || name || 'this lead'}”` })}
                                 >
-                                  To Lead Mgmt
+                                  <ReplayIcon fontSize="small" />
                                 </Button>
                               </Tooltip>
                             )}
@@ -308,7 +303,6 @@ export default function HistoricalPage() {
         />
       </Card>
 
-      {/* Full record details */}
       <Dialog open={!!detail} onClose={() => setDetail(null)} maxWidth="sm" fullWidth>
         <DialogTitle>{detail?.company || nameOf(detail ?? {} as HistoricalLead) || 'Historical lead'}</DialogTitle>
         <DialogContent dividers>
@@ -367,7 +361,6 @@ export default function HistoricalPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Edit all fields */}
       <Dialog open={!!editId} onClose={() => setEditId(null)} maxWidth="md" fullWidth>
         <DialogTitle>Edit historical lead</DialogTitle>
         <DialogContent dividers>
@@ -436,7 +429,6 @@ export default function HistoricalPage() {
   );
 }
 
-// Who changed what, and when. Fetched on demand when the details dialog opens.
 function EditHistory({ leadId }: { leadId: string }) {
   const { data, isFetching } = useHistoricalLeadHistoryQuery(leadId);
   const edits = data?.data ?? [];

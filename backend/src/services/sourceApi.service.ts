@@ -1,16 +1,6 @@
 import { env } from '@config/env';
 import type { SourceRow, DownloadSourceRow } from '@services/sourceDb.service';
 
-// Fetches new leads from the website's fetch_all_leads.aspx endpoint (runs beside
-// the source SQL Server) instead of connecting to the DB directly. Used when
-// SOURCE_MODE=api. Exposes the same fetchNewLeads/close contract as sourceDb, so
-// the sync service is agnostic to where rows come from.
-//
-// Endpoint contract (fetch_all_leads.aspx):
-//   GET ?source=exhi&since_exhi=<cursor>&top=<batch>
-//   Header: X-Api-Key: <secret>
-//   200 -> { status, exhibitor: { count, last_id, data: [ ...exhi rows ] }, download }
-// We request source=exhi so only the exhibitor dataset is returned.
 interface AllLeadsResponse {
   status?: string;
   message?: string;
@@ -59,7 +49,6 @@ export const sourceApi = {
     }
   },
 
-  // Same endpoint, source=download — post-show registrations with their own cursor.
   async fetchNewDownloadLeads(lastSyncedId: number, batchSize: number): Promise<DownloadSourceRow[]> {
     if (!env.SOURCE_API_URL) throw new Error('SOURCE_API_URL is not configured (SOURCE_MODE=api)');
 
@@ -100,14 +89,10 @@ export const sourceApi = {
     }
   },
 
-  // Symmetry with sourceDb.close(); nothing to tear down for HTTP.
   async close(): Promise<void> {
-    /* no-op */
   },
 };
 
-// The JSON endpoint sends id/status as numbers and create_date as an ISO string.
-// Coerce them to the SourceRow shape the sync mapper expects.
 function normalizeRow(raw: unknown): SourceRow {
   const r = raw as Record<string, unknown>;
   return {
@@ -118,8 +103,6 @@ function normalizeRow(raw: unknown): SourceRow {
   } as SourceRow;
 }
 
-// Same coercion for download rows. Both date columns are coerced: download_reg
-// keeps its timestamp in `date` and leaves `create_date` null.
 function normalizeDownloadRow(raw: unknown): DownloadSourceRow {
   const r = raw as Record<string, unknown>;
   const toDate = (v: unknown) => (v ? new Date(v as string) : null);

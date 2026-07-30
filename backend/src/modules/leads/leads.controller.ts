@@ -37,12 +37,9 @@ export const leadsController = {
 
   async create(req: Request, res: Response) {
     const { external, record } = await leadsService.create(req.body);
-    // external=true means it was stored in ExternalLead (Visitor/Delegate/Speaker),
-    // not the Lead table — the client uses this to decide where to navigate.
     return created(res, record, { external });
   },
 
-  // Synchronous Excel download (no queue/Redis) — respects filters + row scope.
   async exportXlsx(req: Request, res: Response) {
     const rows = await leadsService.exportRows(req.user!, req.query as unknown as ListLeadsQuery);
 

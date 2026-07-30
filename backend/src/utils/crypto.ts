@@ -9,9 +9,6 @@ export function sha256(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 
-// ---- Reversible password encryption (AES-256-GCM) ----
-// Used ONLY for the SUPER_ADMIN "reveal password" feature. The key is derived
-// from a server secret; ciphertext is useless without it.
 const KEY = crypto.scryptSync(env.PASSWORD_ENC_SECRET, 'exhibitor-pwd-enc', 32);
 
 export function encryptSecret(plain: string): string {
@@ -19,7 +16,6 @@ export function encryptSecret(plain: string): string {
   const cipher = crypto.createCipheriv('aes-256-gcm', KEY, iv);
   const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  // iv.tag.cipher  (all base64url)
   return `${iv.toString('base64url')}.${tag.toString('base64url')}.${enc.toString('base64url')}`;
 }
 

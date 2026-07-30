@@ -2,9 +2,6 @@ import { PrismaClient } from '@prisma/client';
 import { isDev } from './env';
 import { logger } from './logger';
 
-// Single shared Prisma client. Connection pooling is configured via the
-// `connection_limit` / `pool_timeout` query params in DATABASE_URL (PgBouncer
-// recommended in production).
 export const prisma = new PrismaClient({
   log: isDev
     ? [
@@ -16,7 +13,6 @@ export const prisma = new PrismaClient({
 });
 
 if (isDev) {
-  // Log slow queries (event typing depends on the `log` config above).
   (prisma as unknown as { $on: (e: string, cb: (e: { query: string; duration: number }) => void) => void }).$on(
     'query',
     (e) => {

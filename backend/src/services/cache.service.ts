@@ -1,16 +1,12 @@
 import { redis } from '@config/redis';
 
-// Thin cache-aside helper over Redis with JSON serialization + TTL.
-// Every operation is fault-tolerant: if Redis is unavailable, reads return a
-// miss (null) and writes/deletes become no-ops, so callers transparently fall
-// back to the database. This lets the app run with or without Redis.
 export const cache = {
   async get<T>(key: string): Promise<T | null> {
     try {
       const raw = await redis.get(key);
       return raw ? (JSON.parse(raw) as T) : null;
     } catch {
-      return null; // Redis down → treat as cache miss.
+      return null;
     }
   },
 
@@ -18,7 +14,6 @@ export const cache = {
     try {
       await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
     } catch {
-      // Redis down → skip caching.
     }
   },
 
@@ -26,11 +21,9 @@ export const cache = {
     try {
       if (keys.length) await redis.del(...keys);
     } catch {
-      // Redis down → nothing to invalidate.
     }
   },
 
-  // Delete by pattern using non-blocking SCAN (safe on large keyspaces).
   async delPattern(pattern: string): Promise<void> {
     try {
       let cursor = '0';
@@ -40,11 +33,9 @@ export const cache = {
         if (batch.length) await redis.del(...batch);
       } while (cursor !== '0');
     } catch {
-      // Redis down → nothing to invalidate.
     }
   },
 
-  // Cache-aside wrapper.
   async remember<T>(key: string, ttlSeconds: number, fn: () => Promise<T>): Promise<T> {
     const hit = await this.get<T>(key);
     if (hit !== null) return hit;

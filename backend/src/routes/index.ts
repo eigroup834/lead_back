@@ -16,7 +16,7 @@ const router = Router();
 
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
-router.use('/roles', rolesRoutes); // includes GET /roles/permissions/all
+router.use('/roles', rolesRoutes);
 router.use('/departments', departmentsRoutes);
 router.use('/leads', leadsRoutes);
 router.use('/historical', historicalRoutes);
@@ -26,7 +26,6 @@ router.use('/reports', reportsRoutes);
 router.use('/sync', syncRoutes);
 router.use('/notifications', notificationsRoutes);
 
-// Lead-scoped sub-resources defined with absolute paths (e.g. /leads/:id/followups).
 router.use('/', followupsRoutes);
 
 export default router;

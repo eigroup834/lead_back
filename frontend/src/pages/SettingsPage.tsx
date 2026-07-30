@@ -10,6 +10,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useSyncLogsQuery, useRunSyncMutation } from '@/features/adminApi';
 import { sentenceCase } from '@/constants';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
+import PageHeader from '@/components/PageHeader';
 
 type SyncLog = { startedAt: string; status: string; fetchedCount: number; insertedCount: number };
 type SyncSortKey = keyof SyncLog;
@@ -35,7 +36,7 @@ export default function SettingsPage() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ mb: 3 }}>Settings</Typography>
+      <PageHeader title="Settings" subtitle="Your profile, appearance and lead sync." />
       <Grid container spacing={2.5}>
         <Grid item xs={12} md={5}>
           <Card>

@@ -1,8 +1,6 @@
 import type { RequestHandler } from 'express';
 import { AppError } from '@utils/AppError';
 
-// Permission-based guard. Dynamic — permissions come from the DB role matrix
-// (loaded into req.user.permissions), never hardcoded per route logic.
 export function requirePermission(...required: string[]): RequestHandler {
   return (req, _res, next) => {
     if (!req.user) return next(AppError.unauthorized());
@@ -13,7 +11,6 @@ export function requirePermission(...required: string[]): RequestHandler {
   };
 }
 
-// At least one of the listed permissions.
 export function requireAnyPermission(...required: string[]): RequestHandler {
   return (req, _res, next) => {
     if (!req.user) return next(AppError.unauthorized());
@@ -25,7 +22,6 @@ export function requireAnyPermission(...required: string[]): RequestHandler {
   };
 }
 
-// Role-hierarchy guard: caller level must be <= maxLevel (lower number = higher rank).
 export function requireMaxLevel(maxLevel: number): RequestHandler {
   return (req, _res, next) => {
     if (!req.user) return next(AppError.unauthorized());

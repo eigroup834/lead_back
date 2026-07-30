@@ -6,7 +6,6 @@ import { AppError } from '@utils/AppError';
 import { notifyAssignments } from './assignment.mailer';
 import type { AssignBulkInput, AssignSingleInput, AutoAssignInput } from './assignment.validator';
 
-// Persisted round-robin pointer so distribution stays fair across requests.
 async function nextRoundRobinIndex(poolKey: string, poolSize: number): Promise<number> {
   const n = await redis.incr(`rr:${poolKey}`);
   return (n - 1) % poolSize;
@@ -48,8 +47,6 @@ export const assignmentService = {
   async single(input: AssignSingleInput, byId: string) {
     await prisma.$transaction((tx) => assignOne(tx, input.leadId, input.assignToId, byId, 'SINGLE', 'MANUAL', input.note));
     await bustDashboard();
-    // Fire-and-forget: the assignment is already committed, so a mail failure
-    // must not surface as a failed assignment.
     notifyAssignments([input.leadId], input.assignToId, byId);
     return { leadId: input.leadId, assignedTo: input.assignToId };
   },
@@ -66,7 +63,6 @@ export const assignmentService = {
   },
 
   async auto(input: AutoAssignInput, byId: string) {
-    // Resolve the executive pool.
     let pool = input.poolUserIds;
     if (!pool) {
       const where: Prisma.UserWhereInput = {
@@ -82,8 +78,6 @@ export const assignmentService = {
 
     const poolKey = input.teamId ?? 'global';
     const result: Record<string, number> = {};
-    // Round-robin spreads leads across the pool, so group them per assignee and
-    // mail each person their own set.
     const perAssignee = new Map<string, string[]>();
 
     await prisma.$transaction(async (tx) => {

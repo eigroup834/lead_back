@@ -6,7 +6,6 @@ import { landingPath } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import { RequireAuth, RequirePermission } from './guards';
 
-// Route-level code splitting.
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
@@ -26,7 +25,6 @@ const Fallback = () => (
   </Box>
 );
 
-// "/" can't be a fixed redirect any more — the Dashboard is Super Admin only.
 function LandingRedirect() {
   const { level } = usePermissions();
   return <Navigate to={landingPath(level)} replace />;
@@ -48,9 +46,9 @@ export default function AppRoutes() {
         >
           <Route index element={<LandingRedirect />} />
           <Route path="dashboard" element={<RequirePermission permission="dashboard.view" maxLevel={1}><DashboardPage /></RequirePermission>} />
-          <Route path="leads" element={<RequirePermission permission="lead.view" maxLevel={2}><LeadsPage /></RequirePermission>} />
+          <Route path="leads" element={<RequirePermission permission="lead.view" maxLevel={2}><LeadsPage key="leads-all" /></RequirePermission>} />
           <Route path="leads/new" element={<RequirePermission permission="lead.create"><AddLeadPage /></RequirePermission>} />
-          <Route path="leads/assigned" element={<RequirePermission permission="lead.view"><LeadsPage assignedOnly /></RequirePermission>} />
+          <Route path="leads/assigned" element={<RequirePermission permission="lead.view"><LeadsPage key="leads-assigned" assignedOnly /></RequirePermission>} />
           <Route path="leads/:id" element={<RequirePermission permission="lead.view"><LeadDetailsPage /></RequirePermission>} />
           <Route path="followups" element={<RequirePermission permission="lead.view"><FollowupsPage /></RequirePermission>} />
           <Route path="other-leads" element={<RequirePermission permission="lead.view"><OtherLeadsPage /></RequirePermission>} />

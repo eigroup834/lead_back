@@ -17,16 +17,15 @@ export interface HistoricalLead {
   country: string | null;
   city: string | null;
   designation: string | null;
-  status: string;               // status the lead had when archived (typically CONVERTED)
-  sourceLeadId: string | null;  // the Lead it was archived from
-  restoredLeadId: string | null; // most recent lead created by moving it back, if any
+  status: string;
+  sourceLeadId: string | null;
+  restoredLeadId: string | null;
   archivedAt: string;
-  // Master-import fields
   histCode: string | null;
   branchOffice: string | null;
   assignedTo: string | null;
   assignedUserId: string | null;
-  assignedUser: { id: string; firstName: string; lastName: string } | null; // joined from users
+  assignedUser: { id: string; firstName: string; lastName: string } | null;
   industry: string | null;
   spaceSqm: string | null;
   remark: string | null;
@@ -102,7 +101,6 @@ export const historicalApi = api.injectEndpoints({
       spaceSqm?: string | null; assignedUserId?: string | null; exhHistory?: ExhHistoryEntry[];
     }>({
       query: ({ id, ...body }) => ({ url: `/historical/leads/${id}`, method: 'PATCH', body }),
-      // Also refresh that record's edit trail, which the save just appended to.
       invalidatesTags: (_r, _e, { id }) => ['Historical', { type: 'Historical' as const, id }],
     }),
   }),

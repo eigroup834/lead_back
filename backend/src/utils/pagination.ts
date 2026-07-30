@@ -1,11 +1,6 @@
-// Opaque cursor helpers for keyset / cursor-based pagination.
-// We encode the sort key + id so we can resume deterministically even on
-// non-unique sort columns.
 
 export interface CursorPayload {
-  // value of the sort column at the boundary row (ISO string / number / string)
   v: string | number | null;
-  // tie-breaker id
   id: string;
 }
 

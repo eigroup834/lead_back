@@ -21,15 +21,10 @@ async function bustDashboard() {
   await cache.delPattern('dash:*');
 }
 
-// Row-level scope for historical leads: Super Admin (level 1) sees every record,
-// everyone else only the ones assigned to them.
 function historicalScope(user: AuthUser): Prisma.HistoricalLeadWhereInput {
   return user.level === 1 ? {} : { assignedUserId: user.id };
 }
 
-// Editing and moving back to Lead Management are open to every user, but only on
-// records they can actually see — otherwise a rep could reach another member's
-// archive by guessing an id.
 async function assertEditable(user: AuthUser, id: string) {
   const record = await prisma.historicalLead.findUnique({ where: { id } });
   if (!record) throw AppError.notFound('Historical lead not found');
@@ -39,7 +34,6 @@ async function assertEditable(user: AuthUser, id: string) {
   return record;
 }
 
-// Fields whose before/after is recorded in the edit log, with display labels.
 const AUDITED_FIELDS = {
   company: 'Company', name: 'Contact name', designation: 'Designation', email: 'Email',
   mobile: 'Mobile', city: 'City', country: 'Country', eventName: 'Event name',
@@ -57,14 +51,10 @@ export interface HistoricalEditChange {
 const asText = (v: unknown): string | null =>
   v === null || v === undefined || v === '' ? null : typeof v === 'string' ? v : JSON.stringify(v);
 
-// Sort keys that aren't scalar columns on HistoricalLead.
 const HISTORICAL_RELATION_SORTS: Record<string, (dir: Prisma.SortOrder) => Prisma.HistoricalLeadOrderByWithRelationInput> = {
   assignedUser: (dir) => ({ assignedUser: { firstName: dir } }),
 };
 
-// Every sortable column here is nullable except archivedAt; blanks sort last so
-// they don't crowd the top of a descending sort. (Prisma rejects `nulls` on
-// required columns.)
 function historicalOrderBy(q: ListHistoricalLeadsQuery): Prisma.HistoricalLeadOrderByWithRelationInput[] {
   const relation = HISTORICAL_RELATION_SORTS[q.sortBy];
   const primary = (relation
@@ -72,8 +62,6 @@ function historicalOrderBy(q: ListHistoricalLeadsQuery): Prisma.HistoricalLeadOr
     : q.sortBy === 'archivedAt'
       ? { archivedAt: q.sortDir }
       : { [q.sortBy]: { sort: q.sortDir, nulls: 'last' } }) as Prisma.HistoricalLeadOrderByWithRelationInput;
-  // Ties fall back to most-recently-archived first (the long-standing order),
-  // then id so paging stays stable when those tie too.
   return q.sortBy === 'archivedAt'
     ? [primary, { id: q.sortDir }]
     : [primary, { archivedAt: 'desc' }, { id: 'desc' }];
@@ -89,8 +77,6 @@ function str(v: unknown): string | undefined {
   return s.length ? s : undefined;
 }
 
-// Build a Lead payload from a row using the upload's column→field mapping, then
-// layer any manual overrides on top. Returns null if nothing usable is present.
 function mapRowToLead(
   mapping: Mapping,
   data: RowData,
@@ -102,29 +88,25 @@ function mapRowToLead(
     const val = col ? str(data[col]) : undefined;
     if (val !== undefined) out[field] = val;
   }
-  // overrides win over mapped values
   for (const [k, v] of Object.entries(overrides ?? {})) {
     if (k === 'priority') continue;
     const s = str(v);
     if (s !== undefined) out[k] = s;
-    else delete out[k]; // explicit empty override clears the field
+    else delete out[k];
   }
 
-  // Email must be valid to satisfy the Lead contract; keep an invalid one in remarks
-  // so the rep never silently loses it.
   if (out.email && !EMAIL_RE.test(out.email)) {
     out.remarks = [out.remarks, `Email (unverified): ${out.email}`].filter(Boolean).join(' | ');
     delete out.email;
   }
 
-  // A lead needs at least one identifying field.
   if (!(out.company || out.email || out.firstName || out.mobile)) return null;
 
   const { createDate, priority, ...rest } = out as Record<string, string> & { createDate?: string };
   const lead: Prisma.LeadUncheckedCreateInput = {
     ...rest,
     source: 'MANUAL',
-    leadType: 'EXHIBITION', // historical follow-ups are exhibitor leads
+    leadType: 'EXHIBITION',
     status: 'NEW',
     priority: (overrides?.priority as Prisma.LeadUncheckedCreateInput['priority']) ?? 'MEDIUM',
   };
@@ -206,8 +188,6 @@ export const historicalService = {
     await prisma.historicalUpload.update({ where: { id }, data: { deletedAt: new Date() } });
   },
 
-  // Convert a single row into a Lead. Idempotent-ish: a row already converted is
-  // rejected so we never create duplicate leads from the same row.
   async convertRow(user: AuthUser, id: string, rowId: string, input: ConvertRowInput) {
     const upload = await ownUploadOrThrow(id, user.id);
     const row = await prisma.historicalRow.findFirst({ where: { id: rowId, uploadId: id } });
@@ -232,7 +212,6 @@ export const historicalService = {
     return lead;
   },
 
-  // Bulk convert: explicit rowIds, or every not-yet-converted row when omitted.
   async convertBulk(user: AuthUser, id: string, input: ConvertBulkInput) {
     const upload = await ownUploadOrThrow(id, user.id);
     const where: Prisma.HistoricalRowWhereInput = { uploadId: id, convertedLeadId: null };
@@ -262,13 +241,8 @@ export const historicalService = {
     return { converted, skipped, total: rows.length };
   },
 
-  // -------- Historical leads (year-tagged archive) --------
-
   async listLeads(user: AuthUser, q: ListHistoricalLeadsQuery) {
-    // Once moved to Lead Management, a record drops out of this list (data kept).
     const where: Prisma.HistoricalLeadWhereInput = { restoredLeadId: null, ...historicalScope(user) };
-    // Only Super Admin (level 1) may narrow to a specific team member; everyone
-    // else is already pinned to their own records by the scope above.
     if (user.level === 1 && q.assigneeId) where.assignedUserId = q.assigneeId;
     if (q.year) where.eventYear = q.year;
     if (q.noEventName) where.eventName = null;
@@ -299,7 +273,6 @@ export const historicalService = {
     return { items, meta: { page: q.page, limit: q.limit, total, pages: Math.ceil(total / q.limit) } };
   },
 
-  // Distinct event years present in the archive, with counts.
   async years() {
     const groups = await prisma.historicalLead.groupBy({
       by: ['eventYear'],
@@ -310,9 +283,6 @@ export const historicalService = {
     return groups.map((g) => ({ year: g.eventYear as number, count: g._count._all }));
   },
 
-  // Distinct event names in the archive, with counts — drives the Event filter.
-  // Scoped like the list, so a rep is only offered events they actually have
-  // records for. The null group becomes the "(No event name)" option.
   async events(user: AuthUser) {
     const groups = await prisma.historicalLead.groupBy({
       by: ['eventName'],
@@ -323,7 +293,6 @@ export const historicalService = {
     return groups.map((g) => ({ event: g.eventName, count: g._count._all }));
   },
 
-  // Edit trail for one record, newest first.
   async leadHistory(user: AuthUser, id: string) {
     await assertEditable(user, id);
     return prisma.historicalLeadEdit.findMany({
@@ -334,13 +303,8 @@ export const historicalService = {
     });
   },
 
-  // Move historical lead(s) back into Lead Management as fresh leads (status NEW).
-  // The historical record is kept as the permanent archive; restoredLeadId is
-  // updated to point at the most recent lead created from it.
   async restore(user: AuthUser, input: RestoreHistoricalInput) {
     const userId = user.id;
-    // Scoped like the list: a rep can only move back records assigned to them.
-    // Anything outside their scope simply isn't found, and counts as skipped.
     const records = await prisma.historicalLead.findMany({
       where: { id: { in: input.ids }, ...historicalScope(user) },
     });
@@ -349,14 +313,12 @@ export const historicalService = {
     let skipped = input.ids.length - records.length;
     for (const r of records) {
       if (!(r.company || r.email || r.name || r.mobile)) { skipped += 1; continue; }
-      // Restore to the same member it was assigned to. If resolved, the lead is
-      // created already ASSIGNED so it lands in the Assigned Leads tab.
       const assignedTo = r.assignedUserId;
       await prisma.$transaction(async (tx) => {
         const lead = await tx.lead.create({
           data: {
             company: r.company,
-            firstName: r.name, // historical stores a single name field
+            firstName: r.name,
             designation: r.designation,
             email: r.email,
             mobile: r.mobile,
@@ -389,7 +351,6 @@ export const historicalService = {
     return { deleted: true };
   },
 
-  // Manually add a historical lead. Resolves the assigned member's name for display.
   async createLead(input: CreateHistoricalLeadInput) {
     let assignedTo: string | null = null;
     if (input.assignedUserId) {
@@ -416,8 +377,6 @@ export const historicalService = {
     });
   },
 
-  // Edit a historical lead. Only the fields present in `input` are changed, and
-  // every actual change is written to the edit log in the same transaction.
   async updateLead(user: AuthUser, id: string, input: UpdateHistoricalLeadInput) {
     const existing = await assertEditable(user, id);
 
@@ -438,7 +397,6 @@ export const historicalService = {
       const from = JSON.stringify(existing.exhHistory ?? []);
       const to = JSON.stringify(input.exhHistory);
       if (from !== to) {
-        // Stored as a compact "year: sqm" summary — the raw JSON reads poorly in a timeline.
         const summarise = (v: unknown) =>
           (Array.isArray(v) ? v : [])
             .map((h) => `${(h as { year: number }).year}: ${(h as { sqm_spo: string }).sqm_spo}`)

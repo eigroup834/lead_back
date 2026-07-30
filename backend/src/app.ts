@@ -17,10 +17,9 @@ import v1Routes from '@routes/index';
 export function createApp(): Application {
   const app = express();
 
-  app.set('trust proxy', 1); // behind Nginx
+  app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
-  // Security & parsing
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN.split(','), credentials: true }));
   app.use(compression());
@@ -30,26 +29,20 @@ export function createApp(): Application {
   app.use(requestContext);
   app.use(metricsMiddleware);
 
-  // Health & readiness (Nginx / k8s probes)
   app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
   app.get('/ready', (_req, res) => res.json({ status: 'ready' }));
 
-  // Prometheus metrics
   app.get('/metrics', async (_req, res) => {
     res.set('Content-Type', registry.contentType);
     res.end(await registry.metrics());
   });
 
-  // API docs
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
-  // Static export downloads (local storage; swap for S3 signed URLs later)
   app.use('/files', express.static(path.resolve(env.LOCAL_STORAGE_PATH)));
 
-  // Rate-limited API
   app.use(env.API_PREFIX, apiRateLimiter, v1Routes);
 
-  // 404 + error handler (last)
   app.use(notFoundHandler);
   app.use(errorHandler);
 

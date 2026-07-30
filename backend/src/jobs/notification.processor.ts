@@ -10,8 +10,6 @@ export interface NotificationJobData {
   data?: Record<string, unknown>;
 }
 
-// Future-ready dispatcher: persists an in-app notification now; EMAIL/WHATSAPP/
-// SMS/PUSH adapters plug in here per channel.
 export async function notificationProcessor(job: Job<NotificationJobData>): Promise<unknown> {
   const { userId, title, body, channel = 'IN_APP', data } = job.data;
 
@@ -20,7 +18,6 @@ export async function notificationProcessor(job: Job<NotificationJobData>): Prom
   });
 
   if (channel !== 'IN_APP') {
-    // TODO: dispatch via provider adapter (SES/Twilio/FCM); mark SENT/FAILED.
     logger.info(`[notification] ${channel} channel queued (adapter pending) for ${userId}`);
   }
   return { id: record.id };

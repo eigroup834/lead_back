@@ -34,7 +34,6 @@ const updateSchema = z.object({
   managerId: z.string().uuid().nullable().optional(),
   roleIds: z.array(z.string().uuid()).optional(),
 });
-// Columns the users table can be sorted by (roles is many-to-many — not sortable).
 const USER_SORTABLE = ['firstName', 'email', 'phone', 'status', 'lastLoginAt', 'createdAt'] as const;
 const listQuery = z.object({
   q: z.string().optional(),
@@ -61,7 +60,6 @@ export const usersService = {
       { firstName: { contains: q.q, mode: 'insensitive' } },
       { lastName: { contains: q.q, mode: 'insensitive' } },
     ];
-    // phone and lastLoginAt are nullable — keep blanks at the end either way.
     const nullable = q.sortBy === 'phone' || q.sortBy === 'lastLoginAt';
     const orderBy = [
       (nullable ? { [q.sortBy]: { sort: q.sortDir, nulls: 'last' } } : { [q.sortBy]: q.sortDir }) as Prisma.UserOrderByWithRelationInput,
@@ -87,8 +85,6 @@ export const usersService = {
     });
   },
 
-  // SUPER_ADMIN only — reveal a user's password (decrypt). Returns null if the
-  // user predates the feature (no stored ciphertext).
   async revealPassword(id: string): Promise<string | null> {
     const user = await prisma.user.findUnique({ where: { id }, select: { passwordEnc: true } });
     if (!user?.passwordEnc) return null;
@@ -99,17 +95,12 @@ export const usersService = {
     const user = await prisma.user.findFirst({ where: { id, deletedAt: null } });
     if (!user) throw AppError.notFound('User not found');
 
-    // Activating / deactivating an account is Super Admin only, and never your
-    // own — that's the quickest way to lock yourself out of the system.
     if (input.status !== undefined && input.status !== user.status) {
       if (actor.level !== 1) throw AppError.forbidden('Only a Super Admin can change a user\'s status');
       if (id === actor.id) throw AppError.forbidden('You cannot change your own status');
     }
 
     if (input.roleIds?.length) {
-      // No self-escalation: you can't grant a role that outranks your own, and
-      // you can't change your own roles at all (that includes demoting yourself
-      // out of the last Super Admin seat).
       if (id === actor.id) throw AppError.forbidden('You cannot change your own role');
       const targets = await prisma.role.findMany({
         where: { id: { in: input.roleIds }, deletedAt: null },
@@ -129,7 +120,7 @@ export const usersService = {
       }
       return u;
     });
-    await cache.del(cacheKeys.permissions(id)); // permissions/roles may have changed
+    await cache.del(cacheKeys.permissions(id));
     return updated;
   },
 
@@ -159,7 +150,6 @@ router.get('/:id', requirePermission('user.view'), validate({ params: idParam })
   return ok(res, user);
 }));
 
-// SUPER_ADMIN (level 1) only — reveal a user's password.
 router.get('/:id/credential', requireMaxLevel(1), validate({ params: idParam }), asyncHandler(async (req, res) => {
   const password = await usersService.revealPassword(req.params.id);
   return ok(res, { password });

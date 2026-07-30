@@ -19,7 +19,6 @@ export interface ExternalLead {
   eventName: string | null;
   createDate: string | null;
   createdAt: string;
-  // Sync lifecycle — set once queued for the cron job that pushes leads to their panel.
   syncStatus?: 'PENDING' | 'SYNCED' | null;
   assignedUserId?: string | null;
   assignedUser?: { id: string; firstName: string; lastName: string } | null;
@@ -52,17 +51,14 @@ export const externalApi = api.injectEndpoints({
       query: (ids) => ({ url: '/external-leads/convert-exhibitor/bulk', method: 'POST', body: { ids } }),
       invalidatesTags: ['External', 'Leads', 'Dashboard'],
     }),
-    // Reclassify within Other Leads (visitor / delegate / speaker / other) — stays in this panel.
     reclassifyExternalLead: build.mutation<ApiEnvelope<ExternalLead>, { id: string; category: ExternalCategory }>({
       query: ({ id, category }) => ({ url: `/external-leads/${id}/reclassify`, method: 'PATCH', body: { category } }),
       invalidatesTags: ['External'],
     }),
-    // Assign brochure lead(s) to a user.
     assignExternalLeads: build.mutation<ApiEnvelope<{ assigned: number; total: number }>, { ids: string[]; assignToId: string }>({
       query: (body) => ({ url: '/external-leads/assign', method: 'POST', body }),
       invalidatesTags: ['External'],
     }),
-    // Queue lead(s) for sync — a cron job later pushes them to their respective panel.
     syncExternalLeads: build.mutation<ApiEnvelope<{ queued: number; total: number }>, string[]>({
       query: (ids) => ({ url: '/external-leads/sync', method: 'POST', body: { ids } }),
       invalidatesTags: ['External'],

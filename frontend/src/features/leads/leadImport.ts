@@ -1,12 +1,8 @@
 import * as XLSX from 'xlsx';
 
-// The spreadsheet contract for bulk lead import. One entry per column, in the
-// order they appear in the template. `key` is the field the API expects; the
-// header text is what the user sees. Keep in sync with bulkImportRow on the API.
 export interface ImportColumn {
   key: string;
   header: string;
-  /** Extra header spellings accepted when reading a file back in. */
   aliases?: string[];
   hint?: string;
 }
@@ -34,14 +30,12 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
   { key: 'priority', header: 'Priority', hint: 'LOW / MEDIUM / HIGH / CRITICAL' },
 ];
 
-// At least one of these must be present for a row to identify a lead.
 export const REQUIRED_ONE_OF = ['company', 'email', 'firstName', 'mobile'];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 
 export interface ParsedRow {
-  /** 1-based spreadsheet row number, so errors point at the real line. */
   row: number;
   values: Record<string, string>;
   error?: string;
@@ -49,18 +43,12 @@ export interface ParsedRow {
 
 export interface ParseResult {
   rows: ParsedRow[];
-  /** Headers in the file that matched no known column — imported as nothing. */
   unknownHeaders: string[];
-  /** True when the sheet had no recognisable columns at all. */
   noKnownColumns: boolean;
 }
 
-// Strip everything that isn't a letter or digit, so "First Name", "first_name"
-// and "e-mail" all collapse onto the same key as their canonical header.
 const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-// header text -> field key, covering the canonical header, its aliases and the
-// raw field name (so a file exported from elsewhere still lines up).
 const HEADER_LOOKUP = new Map<string, string>();
 for (const c of IMPORT_COLUMNS) {
   HEADER_LOOKUP.set(normalise(c.header), c.key);
@@ -68,7 +56,6 @@ for (const c of IMPORT_COLUMNS) {
   for (const a of c.aliases ?? []) HEADER_LOOKUP.set(normalise(a), c.key);
 }
 
-/** Build the downloadable template: headers, a hint row, and two example rows. */
 export function buildTemplateWorkbook(): XLSX.WorkBook {
   const headers = IMPORT_COLUMNS.map((c) => c.header);
   const examples = [
@@ -92,8 +79,6 @@ export function buildTemplateWorkbook(): XLSX.WorkBook {
   const sheet = XLSX.utils.json_to_sheet(examples, { header: headers });
   sheet['!cols'] = headers.map((h) => ({ wch: Math.max(14, h.length + 4) }));
 
-  // A second sheet documents the rules rather than cluttering the data sheet —
-  // an instruction row inside the data would import as a lead.
   const notes = [
     ['How to use this template'],
     [''],
@@ -127,17 +112,12 @@ const cellToString = (v: unknown): string => {
   return String(v).trim();
 };
 
-/** Read the first sheet of an uploaded workbook into validated rows. */
 export function parseWorkbook(data: ArrayBuffer): ParseResult {
   const wb = XLSX.read(data, { cellDates: true });
-  // Prefer a sheet named "Leads" (our template) — otherwise take the first one,
-  // so a plain single-sheet file from the user still works.
   const sheetName = wb.SheetNames.find((n) => normalise(n) === 'leads') ?? wb.SheetNames[0];
   const sheet = sheetName ? wb.Sheets[sheetName] : undefined;
   if (!sheet) return { rows: [], unknownHeaders: [], noKnownColumns: true };
 
-  // header:1 gives raw rows, so we control header matching and know the real
-  // spreadsheet row number of every record.
   const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false, defval: '' });
   if (!grid.length) return { rows: [], unknownHeaders: [], noKnownColumns: true };
 
@@ -155,7 +135,7 @@ export function parseWorkbook(data: ArrayBuffer): ParseResult {
       const v = cellToString(cell);
       if (v) values[key] = v;
     });
-    if (!Object.keys(values).length) continue; // fully blank line
+    if (!Object.keys(values).length) continue;
 
     if (values.priority) {
       const p = values.priority.toUpperCase();
@@ -166,7 +146,7 @@ export function parseWorkbook(data: ArrayBuffer): ParseResult {
       values.priority = p;
     }
 
-    const rowNo = i + 1; // +1 because the header occupies spreadsheet row 1
+    const rowNo = i + 1;
     if (!REQUIRED_ONE_OF.some((k) => values[k])) {
       rows.push({ row: rowNo, values, error: 'Needs at least a company, first name, email or mobile' });
       continue;

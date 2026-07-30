@@ -2,15 +2,9 @@ import { syncService } from '@modules/sync/sync.service';
 import { env } from '@config/env';
 import { logger } from '@config/logger';
 
-// Simple in-process lead-sync scheduler. Runs the sync directly on a fixed
-// interval inside the API server — no Redis, no BullMQ, no separate worker.
-// An overlap guard ensures a slow run never stacks on top of the next tick.
-
 let running = false;
 let timer: NodeJS.Timeout | null = null;
 
-/** Run one full sync (exhibitor + post-show download). Safe to call anytime;
- *  skips if a run is already in progress. */
 export async function runSyncNow(trigger: 'startup' | 'interval' | 'manual'): Promise<{ started: boolean; reason?: string }> {
   if (running) {
     logger.info(`[sync] ${trigger} trigger skipped — a sync is already running`);
@@ -35,20 +29,17 @@ export async function runSyncNow(trigger: 'startup' | 'interval' | 'manual'): Pr
   }
 }
 
-/** True while a sync run is in progress. */
 export function isSyncRunning(): boolean {
   return running;
 }
 
-/** Start the recurring in-process scheduler. Idempotent. */
 export function startSyncScheduler(): void {
   if (!env.SYNC_ENABLED) {
     logger.info('[sync] scheduler disabled (SYNC_ENABLED=false)');
     return;
   }
-  if (timer) return; // already started
+  if (timer) return;
 
-  // First run a few seconds after boot, then every interval.
   setTimeout(() => void runSyncNow('startup'), 5_000);
   timer = setInterval(() => void runSyncNow('interval'), env.SYNC_INTERVAL_MS);
   timer.unref?.();
@@ -56,7 +47,6 @@ export function startSyncScheduler(): void {
   logger.info(`⏱️  Lead sync scheduler started — every ${Math.round(env.SYNC_INTERVAL_MS / 1000)}s (in-process, no Redis)`);
 }
 
-/** Stop the recurring scheduler (used on shutdown). */
 export function stopSyncScheduler(): void {
   if (timer) {
     clearInterval(timer);

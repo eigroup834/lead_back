@@ -2,11 +2,6 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import { env } from '@config/env';
 import { logger } from '@config/logger';
 
-// SMTP sender, mirroring sms.service: while MAIL_ENABLED=false (or the host /
-// credentials are missing) sending is a dry run — the message is logged, nothing
-// leaves the server, and callers still get ok:true so the flow can be exercised
-// end-to-end before go-live.
-
 export interface MailResult {
   ok: boolean;
   dryRun?: boolean;

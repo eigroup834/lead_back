@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@config/prisma';
 import { cache } from '@services/cache.service';
 
-const TTL = 60; // dashboards tolerate 60s staleness
+const TTL = 60;
 
 export interface DashFilter {
   dateFrom?: Date;
@@ -11,13 +11,12 @@ export interface DashFilter {
   eventName?: string;
   country?: string;
   teamId?: string;
-  userId?: string; // individual salesperson (assignee)
+  userId?: string;
 }
 
 const keyOf = (f: DashFilter) =>
   `${f.dateFrom?.toISOString().slice(0, 10) ?? ''}_${f.dateTo?.toISOString().slice(0, 10) ?? ''}_${f.eventName ?? ''}_${f.country ?? ''}_${f.teamId ?? ''}_${f.userId ?? ''}`;
 
-// Cache only the unfiltered (default) views; filtered queries compute fresh.
 const isDefault = (f: DashFilter) =>
   !f.dateFrom && !f.dateTo && !f.eventName && !f.country && !f.teamId && !f.userId;
 
@@ -37,7 +36,6 @@ async function leadWhere(f: DashFilter): Promise<Prisma.LeadWhereInput> {
   }
   if (f.eventName) where.eventName = f.eventName;
   if (f.country) where.country = f.country;
-  // individual takes precedence over team
   if (f.userId) {
     where.assignedUserId = f.userId;
   } else {
@@ -53,7 +51,6 @@ async function remember<T>(name: string, f: DashFilter, fn: () => Promise<T>): P
 }
 
 export const dashboardService = {
-  // Reference data for filter dropdowns.
   filters() {
     return cache.remember('dash:filters', 300, async () => {
       const [events, countries, teams, members] = await Promise.all([
@@ -61,7 +58,7 @@ export const dashboardService = {
         prisma.lead.groupBy({ by: ['country'], where: { deletedAt: null, country: { not: null } }, _count: { _all: true }, orderBy: { _count: { id: 'desc' } } }),
         prisma.team.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
         prisma.user.findMany({
-          where: { deletedAt: null }, // all members, incl. Super Admin & Head
+          where: { deletedAt: null },
           select: { id: true, firstName: true, lastName: true },
           orderBy: [{ firstName: 'asc' }],
         }),
@@ -159,7 +156,6 @@ export const dashboardService = {
     });
   },
 
-  // Team performance via groupBy (filter-friendly, no raw SQL).
   teamPerformance(f: DashFilter) {
     return remember('team', f, async () => {
       const leadBase = await leadWhere(f);
@@ -176,7 +172,6 @@ export const dashboardService = {
         where: {
           deletedAt: null,
           ...(f.userId ? { id: f.userId } : f.teamId ? { teamId: f.teamId } : {}),
-          // all members, incl. Super Admin & Head
         },
         select: { id: true, firstName: true, lastName: true },
       });

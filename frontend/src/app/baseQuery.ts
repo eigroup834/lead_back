@@ -7,7 +7,7 @@ const API_PREFIX = '/api/v1';
 
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: API_PREFIX,
-  credentials: 'include', // send httpOnly refresh cookie
+  credentials: 'include',
   prepareHeaders: (headers, { getState }) => {
     const token = (getState() as RootState).auth.accessToken;
     if (token) headers.set('authorization', `Bearer ${token}`);
@@ -33,7 +33,7 @@ export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, Fetch
         if (refresh.data) {
           const data = (refresh.data as { data: { accessToken: string; user: never } }).data;
           api.dispatch(setCredentials({ accessToken: data.accessToken, user: data.user }));
-          result = await rawBaseQuery(args, api, extraOptions); // retry original
+          result = await rawBaseQuery(args, api, extraOptions);
         } else {
           api.dispatch(logout());
         }

@@ -48,8 +48,6 @@ export const historicalController = {
     return ok(res, result);
   },
 
-  // -------- Historical leads (year-tagged archive) --------
-
   async listLeads(req: Request, res: Response) {
     const { items, meta } = await historicalService.listLeads(req.user!, req.query as unknown as ListHistoricalLeadsQuery);
     return ok(res, items, meta);

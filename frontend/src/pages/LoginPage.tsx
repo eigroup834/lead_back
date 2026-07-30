@@ -41,8 +41,6 @@ export default function LoginPage() {
     const res = await login(values).unwrap();
     dispatch(api.util.resetApiState());
     dispatch(setCredentials({ accessToken: res.data.accessToken, user: res.data.user }));
-    // Return them to the page they were bounced from — unless that's the
-    // Dashboard and they aren't a Super Admin, which would just 403.
     const home = landingPath(res.data.user.level);
     const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
     navigate(from && from !== '/dashboard' ? from : home, { replace: true });

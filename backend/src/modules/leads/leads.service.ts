@@ -10,7 +10,6 @@ import type {
   BulkImportInput, BulkImportRow, CreateLeadInput, HistoricalMatchInput, ListLeadsQuery, UpdateLeadInput,
 } from './leads.validator';
 
-// One lead's company and the archived records it resembles.
 export interface HistoricalMatch {
   leadId: string;
   company: string;
@@ -18,7 +17,6 @@ export interface HistoricalMatch {
 }
 import type { LeadStatus, ExternalLeadCategory } from '@prisma/client';
 
-// Lead types that are NOT exhibitor leads — routed to the ExternalLead table.
 const EXTERNAL_LEAD_TYPES = new Set(['VISITOR', 'DELEGATE', 'SPEAKER']);
 
 async function bustDashboard() {
@@ -34,9 +32,6 @@ export const leadsService = {
     return leadsRepository.exportRows(user, q);
   },
 
-  // Manually add a lead. Exhibition leads live in the exhibitor CRM (Lead table).
-  // Visitor/Delegate/Speaker leads belong to the local CRM, so they are stored in
-  // the ExternalLead staging table instead — same routing as post-show sync.
   async create(input: CreateLeadInput) {
     const { email, leadType, ...rest } = input;
 
@@ -52,9 +47,9 @@ export const leadsService = {
           designation: rest.designation ?? null,
           company: rest.company ?? null,
           eventName: rest.eventName ?? null,
-          businessInterest: leadType, // the chosen type doubles as the interest
+          businessInterest: leadType,
           source: 'MANUAL',
-          sourceChannel: null, // manual entry — not a website channel
+          sourceChannel: null,
           raw: JSON.parse(JSON.stringify(input)) as object,
         },
       });
@@ -69,16 +64,12 @@ export const leadsService = {
     return { external: false as const, record: lead };
   },
 
-  // Bulk import from a spreadsheet. Every row is validated on its own so a single
-  // bad line reports back with its spreadsheet row number instead of failing the
-  // whole file. Imported leads are always exhibitor leads and start as New.
   async bulkImport(userId: string, input: BulkImportInput) {
     const valid: BulkImportRow[] = [];
     const errors: Array<{ row: number; message: string }> = [];
 
     input.rows.forEach((raw, i) => {
       const parsed = bulkImportRow.safeParse(raw);
-      // Fall back to the array position when the row number itself is unusable.
       const rowNo = parsed.success ? parsed.data.row : Number((raw as { row?: unknown })?.row) || i + 2;
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
@@ -97,8 +88,6 @@ export const leadsService = {
       valid.push(r);
     });
 
-    // Duplicates: first against rows earlier in this same file, then against
-    // leads already in the system. Matching is on email or mobile.
     const toCreate: BulkImportRow[] = [];
     if (input.skipDuplicates) {
       const emails = valid.map((r) => r.email?.toLowerCase()).filter(Boolean) as string[];
@@ -161,15 +150,10 @@ export const leadsService = {
     }
 
     if (created > 0) await bustDashboard();
-    // Errors are row-ordered so the UI can show them against the spreadsheet.
     errors.sort((a, b) => a.row - b.row);
     return { created, failed: errors.length, total: input.rows.length, errors };
   },
 
-  // Which of these leads already appear in Historical Data, by company name?
-  // Trigram similarity (pg_trgm) at or above HISTORICAL_MATCH_THRESHOLD — an
-  // equality check would miss "Acme Exhibits Ltd" vs "Acme Exhibits Ltd.".
-  // Only leads with at least one match come back.
   async historicalMatches(input: HistoricalMatchInput) {
     const leads = await prisma.lead.findMany({
       where: { id: { in: input.leadIds }, deletedAt: null, NOT: { company: null } },
@@ -178,13 +162,6 @@ export const leadsService = {
     const named = leads.filter((l) => (l.company ?? '').trim().length >= 3);
     if (!named.length) return { threshold: env.HISTORICAL_MATCH_THRESHOLD, matches: [] };
 
-    // One batched query rather than one per lead: bulk assigns can carry hundreds
-    // of leads, and a per-lead round trip would take seconds on the assign dialog.
-    //
-    // The join must use the `%` operator, not `similarity(...) >= x`: only `%`
-    // can use the GIN trigram index, and it reads its cutoff from the session's
-    // pg_trgm.similarity_threshold. The function form falls back to a sequential
-    // scan per lead (measured ~46x slower over this archive).
     const pairs = Prisma.join(named.map((l) => Prisma.sql`(${l.id}::uuid, ${l.company as string})`));
     const rows = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_limit(${env.HISTORICAL_MATCH_THRESHOLD}::real)`;
@@ -205,7 +182,6 @@ export const leadsService = {
       `;
     });
 
-    // Group by lead, keeping the closest few matches each.
     const byLead = new Map<string, HistoricalMatch>();
     for (const r of rows) {
       const lead = named.find((l) => l.id === r.leadId);
@@ -236,8 +212,6 @@ export const leadsService = {
     return lead;
   },
 
-  // Status is NEVER overwritten destructively: we append to lead_status_history
-  // in the same transaction that updates the denormalized current status.
   async changeStatus(id: string, toStatus: LeadStatus, userId: string, reason?: string, sqmSpace?: string) {
     const lead = await this.get(id);
     if (lead.status === toStatus && sqmSpace === undefined) return lead;
@@ -266,9 +240,6 @@ export const leadsService = {
     return prisma.leadNote.create({ data: { leadId, authorId, body } });
   },
 
-  // Reclassify an exhibitor lead as Visitor/Delegate/Speaker: copy it into the
-  // ExternalLead (local-CRM) list with the chosen category, then soft-delete the
-  // original Lead so it leaves the exhibitor pipeline. Done atomically.
   async convertToExternal(id: string, type: ExternalLeadCategory) {
     const lead = await this.get(id);
     const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || null;
@@ -300,9 +271,6 @@ export const leadsService = {
     return external;
   },
 
-  // Archive converted leads into the year-tagged Historical store and remove them
-  // from active Lead Management. Only CONVERTED, not-yet-deleted leads are archived;
-  // anything else in the selection is skipped (reported back to the caller).
   async archiveToHistorical(userId: string, leadIds: string[], eventYear: number) {
     const leads = await prisma.lead.findMany({
       where: { id: { in: leadIds }, status: 'CONVERTED', deletedAt: null },

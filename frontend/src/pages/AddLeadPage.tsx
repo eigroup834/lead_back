@@ -8,6 +8,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LeadExcelImport from '@/components/LeadExcelImport';
+import PageHeader from '@/components/PageHeader';
 import { LEAD_SOURCES, PRIORITIES, leadsListPath, prettyLabel } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
@@ -88,7 +89,6 @@ export default function AddLeadPage() {
       return;
     }
 
-    // Send classification fields always; drop empty optional text fields.
     const payload: Record<string, unknown> = {
       source: form.source, status: form.status, priority: form.priority,
     };
@@ -98,16 +98,13 @@ export default function AddLeadPage() {
       if (form[k] !== '') payload[k] = form[k];
     });
     const res = await createLead(payload).unwrap();
-    // Visitor/Delegate/Speaker are stored in the external (local-CRM) list, which
-    // has no detail page here — just confirm and return to the leads list.
     if (res.meta?.external) {
       setToast(`${prettyLabel(form.leadType || 'Visitor')} lead saved to the external list`);
       setTimeout(() => navigate(leadsListPath(level)), 900);
       return;
     }
-    // Optionally assign to a member on creation → lands in that member's Assigned Leads.
     if (assignTo) {
-      try { await assignSingle({ leadId: res.data.id, assignToId: assignTo }).unwrap(); } catch { /* non-fatal */ }
+      try { await assignSingle({ leadId: res.data.id, assignToId: assignTo }).unwrap(); } catch { }
     }
     setToast('Lead added');
     setTimeout(() => navigate(`/leads/${res.data.id}`), 600);
@@ -115,10 +112,11 @@ export default function AddLeadPage() {
 
   return (
     <Box>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Typography variant="h5">Add Lead</Typography>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(leadsListPath(level))}>Back to leads</Button>
-      </Stack>
+      <PageHeader
+        title="Add Lead"
+        subtitle="Capture a single lead, or import a batch from a spreadsheet."
+        actions={<Button startIcon={<ArrowBackIcon />} onClick={() => navigate(leadsListPath(level))}>Back to leads</Button>}
+      />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{serverError(error)}</Alert>}
 
@@ -153,7 +151,6 @@ export default function AddLeadPage() {
         </Stack>
       ) : (
       <Stack spacing={2.5}>
-        {/* Destination + assignment */}
         <Card>
           <CardContent>
             <Grid container spacing={2} alignItems="center">
@@ -182,7 +179,6 @@ export default function AddLeadPage() {
           </CardContent>
         </Card>
 
-        {/* Classification — only relevant for Lead Management */}
         {destination === 'LEAD' && (
         <Card>
           <CardContent>
@@ -193,11 +189,9 @@ export default function AddLeadPage() {
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={3}>
-                {/* Manually added leads are always Exhibitor leads. */}
                 <TextField size="small" fullWidth label="Lead type" value="Exhibitor" disabled />
               </Grid>
               <Grid item xs={12} sm={3}>
-                {/* New leads always start as New; status changes later on the lead page. */}
                 <TextField size="small" fullWidth label="Status" value="New" disabled helperText="New leads start as New" />
               </Grid>
               <Grid item xs={12} sm={3}>
@@ -210,7 +204,6 @@ export default function AddLeadPage() {
         </Card>
         )}
 
-        {/* Contact */}
         <Card>
           <CardHeader title="Contact" />
           <CardContent>
@@ -225,7 +218,6 @@ export default function AddLeadPage() {
           </CardContent>
         </Card>
 
-        {/* Company & participation */}
         <Card>
           <CardHeader title="Company & participation" />
           <CardContent>
@@ -239,7 +231,6 @@ export default function AddLeadPage() {
           </CardContent>
         </Card>
 
-        {/* Address */}
         <Card>
           <CardHeader title="Address" />
           <CardContent>
@@ -253,7 +244,6 @@ export default function AddLeadPage() {
           </CardContent>
         </Card>
 
-        {/* Other */}
         <Card>
           <CardHeader title="Other" />
           <CardContent>

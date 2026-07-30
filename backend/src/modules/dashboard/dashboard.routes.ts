@@ -8,7 +8,6 @@ import { dashboardService, type DashFilter } from './dashboard.service';
 const router = Router();
 router.use(authenticate);
 
-// Parse the shared analytics filters from the query string.
 function parseFilter(req: Request): DashFilter {
   const q = req.query;
   const toDate = (v: unknown) => {

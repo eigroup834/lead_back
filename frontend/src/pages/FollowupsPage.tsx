@@ -20,6 +20,7 @@ import {
 } from '@/features/adminApi';
 import { useChangeStatusMutation } from '@/features/leads/leadsApi';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
+import PageHeader from '@/components/PageHeader';
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const isOverdue = (iso: string) => new Date(iso) < startOfToday();
@@ -30,7 +31,6 @@ const rank = (list: readonly string[], v?: string) => {
   const i = list.indexOf(v ?? '');
   return i === -1 ? list.length : i;
 };
-
 
 const SORT_VALUE: Record<FollowupSortKey, (f: FollowupRow) => string | number> = {
   company: (f) => f.lead?.company || [f.lead?.firstName, f.lead?.lastName].filter(Boolean).join(' ') || '',
@@ -46,7 +46,7 @@ const SORT_VALUE: Record<FollowupSortKey, (f: FollowupRow) => string | number> =
 export default function FollowupsPage() {
   const navigate = useNavigate();
   const { level } = usePermissions();
-  const isManager = level < 4; // levels 1-3 can view teammates' follow-ups
+  const isManager = level < 4;
 
   const [scope, setScope] = useState('today');
   const [assigneeId, setAssigneeId] = useState('');
@@ -69,7 +69,6 @@ export default function FollowupsPage() {
 
   const counts: Record<string, number> = countsData?.data ?? { overdue: 0, today: 0, upcoming: 0, all: 0 };
 
-  // Reschedule may be today or later; if today, time can't be earlier than now.
   const pad2 = (n: number) => String(n).padStart(2, '0');
   const nowD = new Date();
   const todayStr = `${nowD.getFullYear()}-${pad2(nowD.getMonth() + 1)}-${pad2(nowD.getDate())}`;
@@ -105,14 +104,10 @@ export default function FollowupsPage() {
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
-        <Box>
-          <Typography variant="h5">Follow-ups</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Track and action your scheduled follow-ups{isManager ? ' across the team' : ''}.
-          </Typography>
-        </Box>
-        {isManager && (
+      <PageHeader
+        title="Follow-ups"
+        subtitle={`Track and action your scheduled follow-ups${isManager ? ' across the team' : ''}.`}
+        actions={isManager && (
           <FormControl size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Team member</InputLabel>
             <Select label="Team member" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
@@ -123,7 +118,7 @@ export default function FollowupsPage() {
             </Select>
           </FormControl>
         )}
-      </Stack>
+      />
 
       <Card>
         <Toolbar sx={{ px: 2, gap: 1, borderBottom: 1, borderColor: 'divider', flexWrap: 'wrap' }}>
@@ -239,7 +234,6 @@ export default function FollowupsPage() {
         </TableContainer>
       </Card>
 
-      {/* Lead-status change menu */}
       <Menu anchorEl={statusMenu?.el} open={!!statusMenu} onClose={() => setStatusMenu(null)}>
         {LEAD_STATUSES.map((s) => (
           <MenuItem
@@ -252,7 +246,6 @@ export default function FollowupsPage() {
         ))}
       </Menu>
 
-      {/* Row action menu */}
       <Menu anchorEl={rowMenu?.el} open={!!rowMenu} onClose={() => setRowMenu(null)}>
         <MenuItem onClick={() => { if (rowMenu?.row.lead) navigate(`/leads/${rowMenu.row.lead.id}`); setRowMenu(null); }}>
           <OpenInNewIcon fontSize="small" style={{ marginRight: 8 }} /> Open lead
@@ -265,7 +258,6 @@ export default function FollowupsPage() {
         </MenuItem>
       </Menu>
 
-      {/* Reschedule dialog */}
       <Dialog open={!!reschedule} onClose={() => setReschedule(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Reschedule follow-up</DialogTitle>
         <DialogContent>

@@ -48,7 +48,6 @@ export default function LeadDetailsPage() {
   const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || '—';
   const isAssigned = !!lead.assignedUser;
 
-  // Follow-up may be today or later; if today, the time can't be earlier than now.
   const pad2 = (n: number) => String(n).padStart(2, '0');
   const nowD = new Date();
   const todayStr = `${nowD.getFullYear()}-${pad2(nowD.getMonth() + 1)}-${pad2(nowD.getDate())}`;
@@ -76,7 +75,6 @@ export default function LeadDetailsPage() {
       </Stack>
 
       <Grid container spacing={2.5}>
-        {/* Column 1: lead information */}
         <Grid item xs={12} md={4}>
           <Card>
             <CardHeader title="Lead Information" />
@@ -112,12 +110,10 @@ export default function LeadDetailsPage() {
           )}
         </Grid>
 
-        {/* Column 2: update status / followup / remark */}
         <Grid item xs={12} md={4}>
           <Stack spacing={2.5}>
             <Card>
               <CardContent>
-                {/* Assignment — a lead must be assigned before its status can change. */}
                 <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Assignment</Typography>
                 {isAssigned ? (
                   <Stack spacing={1} sx={{ mb: 2 }}>

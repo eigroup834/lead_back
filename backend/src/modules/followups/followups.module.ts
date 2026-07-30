@@ -28,19 +28,15 @@ const updateSchema = z.object({
 const listQuery = z.object({
   scope: z.enum(['mine', 'overdue', 'upcoming', 'today', 'all']).default('mine'),
   days: z.coerce.number().int().min(1).max(365).default(7),
-  // Managers/admins only: narrow to a single teammate's follow-ups.
   assigneeId: z.string().uuid().optional(),
 });
 
-// Executives (level >= 4) are scoped to their own follow-ups and cannot filter by
-// assignee. Managers/admins see everyone by default and may narrow to one teammate.
 function assigneeScope(user: AuthUser, assigneeId?: string): Prisma.LeadFollowupWhereInput {
   if (user.level >= 4) return { assigneeId: user.id };
   if (assigneeId) return { assigneeId };
   return {};
 }
 
-// A lead in one of these states is closed — its pending follow-ups drop off the list.
 const CLOSED_LEAD_STATUSES = ['CONVERTED', 'LOST', 'INVALID', 'NOT_INTERESTED'] as const;
 const OPEN_LEAD: Prisma.LeadFollowupWhereInput = {
   lead: { deletedAt: null, status: { notIn: CLOSED_LEAD_STATUSES as unknown as LeadStatus[] } },
@@ -70,9 +66,6 @@ export const followupsService = {
   list(user: AuthUser, q: z.infer<typeof listQuery>) {
     const now = new Date();
     const base = assigneeScope(user, q.assigneeId);
-    // 'all'/'mine' = every pending follow-up regardless of date. The dated scopes
-    // narrow by followupDate; 'upcoming' is everything after today (no upper cap),
-    // so a follow-up several weeks out still shows up.
     let where: Prisma.LeadFollowupWhereInput = { ...base, ...OPEN_LEAD, status: 'PENDING' };
     if (q.scope === 'overdue') where.followupDate = { lt: startOfDay(now) };
     else if (q.scope === 'today') where.followupDate = { gte: startOfDay(now), lte: endOfDay(now) };
@@ -86,7 +79,6 @@ export const followupsService = {
     });
   },
 
-  // Counts per scope for the tab badges (same assignee scope as the list).
   async counts(user: AuthUser, assigneeId?: string) {
     const now = new Date();
     const base: Prisma.LeadFollowupWhereInput = { ...assigneeScope(user, assigneeId), ...OPEN_LEAD, status: 'PENDING' };
@@ -105,7 +97,6 @@ export const followupsService = {
     if (user.level >= 4 && fu.assigneeId !== user.id) throw AppError.forbidden();
     const data: Prisma.LeadFollowupUpdateInput = { ...input };
     if (input.status === 'DONE') data.completedAt = new Date();
-    // Rescheduling re-arms both SMS reminders for the new date/time.
     if (input.followupDate !== undefined || input.followupTime !== undefined) {
       data.reminderSentAt = null;
       data.reminderDaySentAt = null;

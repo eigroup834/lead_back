@@ -14,7 +14,6 @@ export async function exportProcessor(job: Job<ExportJobData>): Promise<unknown>
   logger.info(`[export] job ${job.id} (${format}) started`);
   const result = await reportService.export(format, filter, String(job.id));
 
-  // Notify the requester that their export is ready (in-app).
   await notificationQueue.add('export-ready', {
     userId: requestedBy,
     title: 'Export ready',
