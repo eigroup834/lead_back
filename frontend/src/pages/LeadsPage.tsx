@@ -99,7 +99,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     sortBy: sort.by, sortDir: sort.dir,
   }, { refetchOnMountOrArgChange: true });
   
-  const { data: users } = useListUsersQuery({ limit: 100 }, { skip: !has('lead.assign') && !canFilterByMember });
+  const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !has('lead.assign') && !canFilterByMember });
   const { data: refFilters } = useDashFiltersQuery(undefined, { skip: !has('dashboard.view') });
 
   const [assignBulk, { isLoading: bulkLoading }] = useAssignBulkMutation();

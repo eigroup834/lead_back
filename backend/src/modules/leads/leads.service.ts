@@ -3,6 +3,7 @@ import { prisma } from '@config/prisma';
 import { env } from '@config/env';
 import { cache } from '@services/cache.service';
 import { AppError } from '@utils/AppError';
+import { assertAssignableUser } from '@services/user.guard';
 import type { AuthUser } from '@/types';
 import { leadsRepository } from './leads.repository';
 import { bulkImportRow } from './leads.validator';
@@ -65,6 +66,7 @@ export const leadsService = {
   },
 
   async bulkImport(userId: string, input: BulkImportInput) {
+    if (input.assignToId) await assertAssignableUser(input.assignToId);
     const valid: BulkImportRow[] = [];
     const errors: Array<{ row: number; message: string }> = [];
 

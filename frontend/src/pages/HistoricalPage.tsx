@@ -69,7 +69,7 @@ export default function HistoricalPage() {
   });
   const { data: events } = useHistoricalEventsQuery();
   
-  const { data: users } = useListUsersQuery({ limit: 100 }, { skip: !canAssign });
+  const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !canAssign });
   const members = [...(users?.data ?? [])]
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
   const [restore, { isLoading: restoring }] = useRestoreHistoricalLeadsMutation();

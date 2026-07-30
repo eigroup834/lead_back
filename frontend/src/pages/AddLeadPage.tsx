@@ -62,7 +62,7 @@ export default function AddLeadPage() {
   const [createLead, { isLoading, error }] = useCreateLeadMutation();
   const [createHistorical, { isLoading: savingHist }] = useCreateHistoricalLeadMutation();
   const [assignSingle] = useAssignSingleMutation();
-  const { data: users } = useListUsersQuery(undefined, { skip: !canAssign });
+  const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !canAssign });
   const [toast, setToast] = useState<string | null>(null);
 
   const members = [...(users?.data ?? [])]

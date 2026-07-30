@@ -53,7 +53,7 @@ export default function FollowupsPage() {
   const { sort, toggle: toggleSort } = useSort<FollowupSortKey>({ by: 'followupDate', dir: 'asc' });
   const { data, isFetching } = useListFollowupsQuery({ scope, assigneeId: assigneeId || undefined });
   const { data: countsData } = useFollowupCountsQuery({ assigneeId: assigneeId || undefined });
-  const { data: users } = useListUsersQuery(undefined, { skip: !isManager });
+  const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !isManager });
 
   const [update] = useUpdateFollowupMutation();
   const [changeStatus] = useChangeStatusMutation();

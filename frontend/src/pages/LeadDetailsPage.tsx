@@ -26,7 +26,7 @@ export default function LeadDetailsPage() {
   const isSuperAdmin = level === 1; 
 
   const { data, isLoading } = useGetLeadQuery(id, { refetchOnMountOrArgChange: true });
-  const { data: users } = useListUsersQuery(undefined, { skip: !canAssign });
+  const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !canAssign });
   const [changeStatus, { isLoading: changing }] = useChangeStatusMutation();
   const [addNote, { isLoading: adding }] = useAddNoteMutation();
   const [scheduleFollowup, { isLoading: scheduling }] = useScheduleFollowupMutation();

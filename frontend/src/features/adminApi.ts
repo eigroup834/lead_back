@@ -66,6 +66,7 @@ export const adminApi = api.injectEndpoints({
     }),
     listUsers: build.query<ApiEnvelope<UserRow[]>, {
       q?: string; page?: number; limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc';
+      status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     } | void>({
       query: (params) => ({ url: '/users', params: params || {} }),
       providesTags: ['User'],

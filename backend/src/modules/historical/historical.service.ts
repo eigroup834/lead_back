@@ -1,5 +1,6 @@
 import { prisma } from '@config/prisma';
 import { cache } from '@services/cache.service';
+import { assertAssignableUser } from '@services/user.guard';
 import { AppError } from '@utils/AppError';
 import type { AuthUser } from '@/types';
 import { MAPPABLE_LEAD_FIELDS } from './historical.validator';
@@ -354,6 +355,7 @@ export const historicalService = {
   async createLead(input: CreateHistoricalLeadInput) {
     let assignedTo: string | null = null;
     if (input.assignedUserId) {
+      await assertAssignableUser(input.assignedUserId);
       const u = await prisma.user.findUnique({
         where: { id: input.assignedUserId },
         select: { firstName: true, lastName: true },
@@ -412,6 +414,7 @@ export const historicalService = {
       data.assignedUserId = input.assignedUserId;
       let assignedTo: string | null = null;
       if (input.assignedUserId) {
+        await assertAssignableUser(input.assignedUserId);
         const u = await prisma.user.findUnique({ where: { id: input.assignedUserId }, select: { firstName: true, lastName: true } });
         assignedTo = u ? `${u.firstName} ${u.lastName}` : null;
       }

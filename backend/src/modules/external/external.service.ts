@@ -3,6 +3,7 @@ import { prisma } from '@config/prisma';
 import { cache } from '@services/cache.service';
 import { AppError } from '@utils/AppError';
 import type { AuthUser } from '@/types';
+import { assertAssignableUser } from '@services/user.guard';
 import type { ListExternalQuery } from './external.validator';
 
 async function bustDashboard() {
@@ -70,6 +71,7 @@ export const externalService = {
   },
 
   async assign(ids: string[], assignToId: string) {
+    await assertAssignableUser(assignToId);
     const res = await prisma.externalLead.updateMany({
       where: { id: { in: ids }, deletedAt: null },
       data: { assignedUserId: assignToId },

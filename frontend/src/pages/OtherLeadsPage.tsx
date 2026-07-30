@@ -55,7 +55,7 @@ export default function OtherLeadsPage() {
     sortBy: sort.by, sortDir: sort.dir,
   });
   const { data: counts } = useExternalCountsQuery();
-  const { data: users } = useListUsersQuery(undefined, { skip: !canAssign });
+  const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !canAssign });
   const [convert, { isLoading: converting }] = useConvertToExhibitorMutation();
   const [bulkConvert, { isLoading: bulkConverting }] = useBulkConvertToExhibitorMutation();
   const [reclassify, { isLoading: reclassifying }] = useReclassifyExternalLeadMutation();

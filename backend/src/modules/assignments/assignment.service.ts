@@ -3,6 +3,7 @@ import { prisma } from '@config/prisma';
 import { redis } from '@config/redis';
 import { cache } from '@services/cache.service';
 import { AppError } from '@utils/AppError';
+import { assertAssignableUser, filterAssignableUsers } from '@services/user.guard';
 import { notifyAssignments } from './assignment.mailer';
 import type { AssignBulkInput, AssignSingleInput, AutoAssignInput } from './assignment.validator';
 
@@ -45,6 +46,7 @@ async function bustDashboard() {
 
 export const assignmentService = {
   async single(input: AssignSingleInput, byId: string) {
+    await assertAssignableUser(input.assignToId);
     await prisma.$transaction((tx) => assignOne(tx, input.leadId, input.assignToId, byId, 'SINGLE', 'MANUAL', input.note));
     await bustDashboard();
     notifyAssignments([input.leadId], input.assignToId, byId);
@@ -52,6 +54,7 @@ export const assignmentService = {
   },
 
   async bulk(input: AssignBulkInput, byId: string) {
+    await assertAssignableUser(input.assignToId);
     await prisma.$transaction(async (tx) => {
       for (const leadId of input.leadIds) {
         await assignOne(tx, leadId, input.assignToId, byId, 'BULK', 'MANUAL', input.note);
@@ -63,7 +66,7 @@ export const assignmentService = {
   },
 
   async auto(input: AutoAssignInput, byId: string) {
-    let pool = input.poolUserIds;
+    let pool = input.poolUserIds ? await filterAssignableUsers(input.poolUserIds) : undefined;
     if (!pool) {
       const where: Prisma.UserWhereInput = {
         deletedAt: null,
