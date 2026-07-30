@@ -11,6 +11,7 @@ import { asyncHandler } from '@utils/asyncHandler';
 import { authService } from '@modules/auth/auth.service';
 import { cache, cacheKeys } from '@services/cache.service';
 import { encryptSecret, decryptSecret } from '@utils/crypto';
+import type { AuthUser } from '@/types';
 
 const createSchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -33,11 +34,15 @@ const updateSchema = z.object({
   managerId: z.string().uuid().nullable().optional(),
   roleIds: z.array(z.string().uuid()).optional(),
 });
+// Columns the users table can be sorted by (roles is many-to-many — not sortable).
+const USER_SORTABLE = ['firstName', 'email', 'phone', 'status', 'lastLoginAt', 'createdAt'] as const;
 const listQuery = z.object({
   q: z.string().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
+  sortBy: z.enum(USER_SORTABLE).default('createdAt'),
+  sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
 const idParam = z.object({ id: z.string().uuid() });
 
@@ -56,8 +61,14 @@ export const usersService = {
       { firstName: { contains: q.q, mode: 'insensitive' } },
       { lastName: { contains: q.q, mode: 'insensitive' } },
     ];
+    // phone and lastLoginAt are nullable — keep blanks at the end either way.
+    const nullable = q.sortBy === 'phone' || q.sortBy === 'lastLoginAt';
+    const orderBy = [
+      (nullable ? { [q.sortBy]: { sort: q.sortDir, nulls: 'last' } } : { [q.sortBy]: q.sortDir }) as Prisma.UserOrderByWithRelationInput,
+      { id: q.sortDir },
+    ];
     const [items, total] = await Promise.all([
-      prisma.user.findMany({ where, select: publicSelect, orderBy: { createdAt: 'desc' }, skip: (q.page - 1) * q.limit, take: q.limit }),
+      prisma.user.findMany({ where, select: publicSelect, orderBy, skip: (q.page - 1) * q.limit, take: q.limit }),
       prisma.user.count({ where }),
     ]);
     return { items, total, page: q.page, limit: q.limit };
@@ -84,9 +95,31 @@ export const usersService = {
     return decryptSecret(user.passwordEnc);
   },
 
-  async update(id: string, input: z.infer<typeof updateSchema>) {
+  async update(actor: AuthUser, id: string, input: z.infer<typeof updateSchema>) {
     const user = await prisma.user.findFirst({ where: { id, deletedAt: null } });
     if (!user) throw AppError.notFound('User not found');
+
+    // Activating / deactivating an account is Super Admin only, and never your
+    // own — that's the quickest way to lock yourself out of the system.
+    if (input.status !== undefined && input.status !== user.status) {
+      if (actor.level !== 1) throw AppError.forbidden('Only a Super Admin can change a user\'s status');
+      if (id === actor.id) throw AppError.forbidden('You cannot change your own status');
+    }
+
+    if (input.roleIds?.length) {
+      // No self-escalation: you can't grant a role that outranks your own, and
+      // you can't change your own roles at all (that includes demoting yourself
+      // out of the last Super Admin seat).
+      if (id === actor.id) throw AppError.forbidden('You cannot change your own role');
+      const targets = await prisma.role.findMany({
+        where: { id: { in: input.roleIds }, deletedAt: null },
+        select: { id: true, level: true, label: true },
+      });
+      if (targets.length !== input.roleIds.length) throw AppError.badRequest('Unknown role');
+      const tooHigh = targets.find((r) => r.level < actor.level);
+      if (tooHigh) throw AppError.forbidden(`You cannot assign the ${tooHigh.label} role`);
+    }
+
     const { roleIds, ...rest } = input;
     const updated = await prisma.$transaction(async (tx) => {
       const u = await tx.user.update({ where: { id }, data: rest, select: publicSelect });
@@ -133,7 +166,7 @@ router.get('/:id/credential', requireMaxLevel(1), validate({ params: idParam }),
 }));
 
 router.patch('/:id', requirePermission('user.update'), validate({ params: idParam, body: updateSchema }), asyncHandler(async (req, res) => {
-  const user = await usersService.update(req.params.id, req.body);
+  const user = await usersService.update(req.user!, req.params.id, req.body);
   return ok(res, user);
 }));
 

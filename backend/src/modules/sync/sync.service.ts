@@ -3,6 +3,7 @@ import { env } from '@config/env';
 import { logger } from '@config/logger';
 import { cache } from '@services/cache.service';
 import { source, type SourceRow, type DownloadSourceRow } from '@services/source.provider';
+import { downloadCreateDate } from '@services/sourceDb.service';
 
 function mapRow(r: SourceRow) {
   return {
@@ -84,7 +85,7 @@ function mapDownloadToLead(r: DownloadSourceRow) {
     mobile: r.mobile,
     eventName: r.event_name,
     ipAddress: r.ip_address,
-    createDate: r.create_date,
+    createDate: downloadCreateDate(r),
     remarks,
     source: 'WEBSITE' as const,
     sourceChannel: 'POST_SHOW_DOWNLOAD' as const,
@@ -110,7 +111,7 @@ function mapDownloadToExternal(r: DownloadSourceRow, category: ExternalCategory)
     businessInterest: r.business_interest,
     eventName: r.event_name,
     ipAddress: r.ip_address,
-    createDate: r.create_date,
+    createDate: downloadCreateDate(r),
     // JSON-safe copy (Date -> ISO string, drops undefined) for the Json column.
     raw: JSON.parse(JSON.stringify(r)) as object,
     source: 'WEBSITE' as const,
@@ -269,7 +270,7 @@ export const syncService = {
       ]);
 
       const maxId = Number(rows[rows.length - 1].id);
-      const lastDate = rows[rows.length - 1].create_date ?? undefined;
+      const lastDate = downloadCreateDate(rows[rows.length - 1]) ?? undefined;
       const inserted = leadRes.count + externalRes.count;
 
       await prisma.$transaction([

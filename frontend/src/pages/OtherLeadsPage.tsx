@@ -22,11 +22,17 @@ import {
   type ExternalLead, type ExternalCategory,
 } from '@/features/external/externalApi';
 import { useListUsersQuery } from '@/features/adminApi';
+import { SortableCell, useSort } from '@/components/SortableCell';
+
+// Sort keys accepted by /external-leads (EXTERNAL_SORTABLE on the API).
+type ExternalSortKey =
+  | 'createdAt' | 'createDate' | 'company' | 'category' | 'email' | 'mobile'
+  | 'designation' | 'eventName' | 'assignedUser';
 
 export default function OtherLeadsPage() {
   const { has, level } = usePermissions();
   const canEdit = has('lead.edit');
-  const canAssign = level === 1; // only Super Admin assigns brochure leads
+  const canAssign = level === 1; 
 
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
@@ -41,9 +47,12 @@ export default function OtherLeadsPage() {
   const [assignTo, setAssignTo] = useState('');
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
 
+  const { sort, toggle: toggleSort } = useSort<ExternalSortKey>({ by: 'createdAt', dir: 'desc' }, () => setPage(0));
+
   const { data, isFetching } = useListExternalLeadsQuery({
     page: page + 1, limit: rowsPerPage, q: debounced || undefined,
     category: category || undefined,
+    sortBy: sort.by, sortDir: sort.dir,
   });
   const { data: counts } = useExternalCountsQuery();
   const { data: users } = useListUsersQuery(undefined, { skip: !canAssign });
@@ -68,8 +77,6 @@ export default function OtherLeadsPage() {
   };
   const clearSelection = (id: string) => setSelected((s) => { const n = { ...s }; delete n[id]; return n; });
 
-  // Apply the chosen classification: Exhibitor moves the lead to Lead Management,
-  // any other value is an in-panel category change.
   const applyClassify = async () => {
     if (!classifyTarget) return;
     const id = classifyTarget.id;
@@ -190,13 +197,13 @@ export default function OtherLeadsPage() {
                     />
                   </TableCell>
                 )}
-                <TableCell sx={{ fontWeight: 700 }}>Company / Contact</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Mobile</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Designation</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Event</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Assigned to</TableCell>
+                <SortableCell field="company" sort={sort} onSort={toggleSort}>Company / Contact</SortableCell>
+                <SortableCell field="email" sort={sort} onSort={toggleSort}>Email</SortableCell>
+                <SortableCell field="mobile" sort={sort} onSort={toggleSort}>Mobile</SortableCell>
+                <SortableCell field="designation" sort={sort} onSort={toggleSort}>Designation</SortableCell>
+                <SortableCell field="eventName" sort={sort} onSort={toggleSort}>Event</SortableCell>
+                <SortableCell field="category" sort={sort} onSort={toggleSort}>Type</SortableCell>
+                <SortableCell field="assignedUser" sort={sort} onSort={toggleSort}>Assigned to</SortableCell>
                 {canEdit && <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>}
               </TableRow>
             </TableHead>

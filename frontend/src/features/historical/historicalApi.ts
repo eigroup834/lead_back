@@ -1,9 +1,6 @@
 import { api } from '@/app/api';
 import type { ApiEnvelope, Lead, PageMeta } from '@/features/types';
 
-// A historical lead is a permanent, year-tagged archive of a converted lead.
-// e.g. "Tata — 2026 event". It stays here forever; moving it back to Lead
-// Management for a future event creates a fresh lead and leaves this record intact.
 export interface ExhHistoryEntry {
   year: number;
   sqm_spo: string;
@@ -43,8 +40,24 @@ export interface HistoricalListParams {
   q?: string;
   year?: number;
   assigneeId?: string;
-  dateFrom?: string;
-  dateTo?: string;
+  eventName?: string;
+  noEventName?: boolean; 
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+}
+
+export interface HistoricalEditChange {
+  field: string;
+  label: string;
+  from: string | null;
+  to: string | null;
+}
+
+export interface HistoricalEdit {
+  id: string;
+  createdAt: string;
+  changes: HistoricalEditChange[];
+  editedBy: { id: string; firstName: string; lastName: string } | null;
 }
 
 export const historicalApi = api.injectEndpoints({
@@ -53,13 +66,18 @@ export const historicalApi = api.injectEndpoints({
       query: (params) => ({ url: '/historical/leads', params }),
       providesTags: ['Historical'],
     }),
-    // Distinct event years present in the archive, with counts — drives the Year filter.
     historicalYears: build.query<ApiEnvelope<Array<{ year: number; count: number }>>, void>({
       query: () => '/historical/leads/years',
       providesTags: ['Historical'],
     }),
-    // Move historical lead(s) back into Lead Management as fresh leads (status New).
-    // The historical record(s) are kept as the permanent archive.
+    historicalEvents: build.query<ApiEnvelope<Array<{ event: string | null; count: number }>>, void>({
+      query: () => '/historical/leads/events',
+      providesTags: ['Historical'],
+    }),
+    historicalLeadHistory: build.query<ApiEnvelope<HistoricalEdit[]>, string>({
+      query: (id) => `/historical/leads/${id}/history`,
+      providesTags: (_r, _e, id) => [{ type: 'Historical', id }],
+    }),
     restoreHistoricalLeads: build.mutation<ApiEnvelope<{ restored: number; skipped: number; total: number }>, string[]>({
       query: (ids) => ({ url: '/historical/leads/restore', method: 'POST', body: { ids } }),
       invalidatesTags: ['Historical', 'Leads', 'Dashboard'],
@@ -68,7 +86,6 @@ export const historicalApi = api.injectEndpoints({
       query: (id) => ({ url: `/historical/leads/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Historical'],
     }),
-    // Manually add a historical lead (from the Add Lead page).
     createHistoricalLead: build.mutation<ApiEnvelope<HistoricalLead>, {
       company?: string; name?: string; designation?: string; email?: string; mobile?: string;
       city?: string; country?: string; eventName?: string; eventYear?: number; assignedUserId?: string;
@@ -76,7 +93,6 @@ export const historicalApi = api.injectEndpoints({
       query: (body) => ({ url: '/historical/leads', method: 'POST', body }),
       invalidatesTags: ['Historical'],
     }),
-    // Edit any field on a historical lead.
     updateHistoricalLead: build.mutation<ApiEnvelope<HistoricalLead>, {
       id: string;
       company?: string | null; name?: string | null; designation?: string | null;
@@ -86,7 +102,8 @@ export const historicalApi = api.injectEndpoints({
       spaceSqm?: string | null; assignedUserId?: string | null; exhHistory?: ExhHistoryEntry[];
     }>({
       query: ({ id, ...body }) => ({ url: `/historical/leads/${id}`, method: 'PATCH', body }),
-      invalidatesTags: ['Historical'],
+      // Also refresh that record's edit trail, which the save just appended to.
+      invalidatesTags: (_r, _e, { id }) => ['Historical', { type: 'Historical' as const, id }],
     }),
   }),
 });
@@ -94,11 +111,12 @@ export const historicalApi = api.injectEndpoints({
 export const {
   useListHistoricalLeadsQuery,
   useHistoricalYearsQuery,
+  useHistoricalEventsQuery,
+  useHistoricalLeadHistoryQuery,
   useRestoreHistoricalLeadsMutation,
   useDeleteHistoricalLeadMutation,
   useCreateHistoricalLeadMutation,
   useUpdateHistoricalLeadMutation,
 } = historicalApi;
 
-// Re-export so callers that only need the Lead shape keep a stable import.
 export type { Lead };

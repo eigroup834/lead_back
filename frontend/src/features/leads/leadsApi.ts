@@ -2,6 +2,20 @@ import { api } from '@/app/api';
 import type { ApiEnvelope, Lead, LeadDetail, PageMeta } from '@/features/types';
 import type { ExternalLeadType } from '@/constants';
 
+// A lead whose company resembles one or more archived historical records.
+export interface HistoricalMatch {
+  leadId: string;
+  company: string;
+  matches: Array<{
+    id: string;
+    company: string | null;
+    eventYear: number | null;
+    assignedTo: string | null;
+    /** Trigram similarity, 0–1. */
+    score: number;
+  }>;
+}
+
 export interface LeadListParams {
   page?: number;
   limit?: number;
@@ -25,12 +39,29 @@ export const leadsApi = api.injectEndpoints({
       query: (params) => ({ url: '/leads', params }),
       providesTags: ['Leads'],
     }),
+    // Pre-assignment duplicate check: which of these leads' companies already
+    // look like records in Historical Data.
+    historicalMatches: build.mutation<
+      ApiEnvelope<{ threshold: number; matches: HistoricalMatch[] }>,
+      { leadIds: string[] }
+    >({
+      query: (body) => ({ url: '/leads/historical-matches', method: 'POST', body }),
+    }),
     getLead: build.query<ApiEnvelope<LeadDetail>, string>({
       query: (id) => `/leads/${id}`,
       providesTags: (_r, _e, id) => [{ type: 'Lead', id }],
     }),
     createLead: build.mutation<ApiEnvelope<Lead>, Record<string, unknown>>({
       query: (body) => ({ url: '/leads', method: 'POST', body }),
+      invalidatesTags: ['Leads', 'Dashboard'],
+    }),
+    // Bulk import from a spreadsheet. Rows are validated individually server-side;
+    // `errors` reports the spreadsheet row number of anything that didn't import.
+    bulkImportLeads: build.mutation<
+      ApiEnvelope<{ created: number; failed: number; total: number; errors: Array<{ row: number; message: string }> }>,
+      { rows: Array<Record<string, unknown>>; assignToId?: string; skipDuplicates?: boolean }
+    >({
+      query: (body) => ({ url: '/leads/bulk', method: 'POST', body }),
       invalidatesTags: ['Leads', 'Dashboard'],
     }),
     updateLead: build.mutation<ApiEnvelope<Lead>, { id: string; body: Partial<Lead> }>({
@@ -81,6 +112,8 @@ export const {
   useListLeadsQuery,
   useGetLeadQuery,
   useCreateLeadMutation,
+  useBulkImportLeadsMutation,
+  useHistoricalMatchesMutation,
   useUpdateLeadMutation,
   useChangeStatusMutation,
   useConvertExternalMutation,

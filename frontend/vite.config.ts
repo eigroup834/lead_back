@@ -10,7 +10,6 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // dev: forward API + file downloads to the backend
       '/api': { target: 'http://localhost:4000', changeOrigin: true },
       '/files': { target: 'http://localhost:4000', changeOrigin: true },
     },

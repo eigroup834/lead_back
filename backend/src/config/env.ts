@@ -69,6 +69,26 @@ const schema = z.object({
   // Default country code applied to 10-digit local numbers.
   SMS_DEFAULT_COUNTRY_CODE: z.string().default('91'),
 
+  // ---- Email (assignment notifications) ----
+  // Set MAIL_HOST/MAIL_USER/MAIL_PASSWORD and MAIL_ENABLED=true to go live.
+  // While MAIL_ENABLED=false the app still composes each message and logs a
+  // dry-run, so the flow can be exercised before SMTP credentials exist.
+  MAIL_ENABLED: z.coerce.boolean().default(false),
+  MAIL_HOST: z.string().default(''),
+  MAIL_PORT: z.coerce.number().default(587),
+  MAIL_SECURE: z.coerce.boolean().default(false), // true for port 465 (implicit TLS)
+  MAIL_USER: z.string().default(''),
+  MAIL_PASSWORD: z.string().default(''),
+  MAIL_FROM: z.string().default('Lead CRM <no-reply@exhibitor.local>'),
+  MAIL_TIMEOUT_MS: z.coerce.number().default(15_000),
+  // Base URL used to build "open the lead" links inside emails.
+  APP_BASE_URL: z.string().default('http://localhost:5173'),
+
+  // ---- Duplicate check against the historical archive ----
+  // Trigram similarity (0-1) at or above which an assigned lead's company is
+  // flagged as already present in Historical Data.
+  HISTORICAL_MATCH_THRESHOLD: z.coerce.number().min(0).max(1).default(0.9),
+
   // ---- Follow-up reminders ----
   FOLLOWUP_REMINDER_ENABLED: z.coerce.boolean().default(true),
   // How often the in-process scheduler scans for due reminders (ms).

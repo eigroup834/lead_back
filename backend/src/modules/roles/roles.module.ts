@@ -4,7 +4,7 @@ import { prisma } from '@config/prisma';
 import { AppError } from '@utils/AppError';
 import { ok, created } from '@utils/response';
 import { authenticate } from '@middleware/auth.middleware';
-import { requirePermission } from '@middleware/rbac.middleware';
+import { requirePermission, requireAnyPermission } from '@middleware/rbac.middleware';
 import { validate } from '@middleware/validate.middleware';
 import { asyncHandler } from '@utils/asyncHandler';
 import { cache } from '@services/cache.service';
@@ -28,7 +28,9 @@ router.get('/permissions/all', requirePermission('role.manage'), asyncHandler(as
 }));
 
 // ----- roles -----
-router.get('/', requirePermission('role.manage'), asyncHandler(async (_req, res) => {
+// Also readable by whoever can create or edit users — they need the list to
+// populate the role picker, and can't manage the matrix without role.manage.
+router.get('/', requireAnyPermission('role.manage', 'user.create', 'user.update'), asyncHandler(async (_req, res) => {
   const roles = await prisma.role.findMany({
     where: { deletedAt: null },
     orderBy: { level: 'asc' },

@@ -12,7 +12,6 @@ export default function App() {
   const initialized = useAppSelector((s) => s.auth.initialized);
   const theme = useMemo(() => buildTheme(mode), [mode]);
 
-  // Silent login: try the httpOnly refresh cookie once on boot.
   useEffect(() => {
     (async () => {
       try {
@@ -22,7 +21,6 @@ export default function App() {
           dispatch(setCredentials({ accessToken: json.data.accessToken, user: json.data.user }));
         }
       } catch {
-        /* not logged in */
       } finally {
         dispatch(setInitialized());
       }

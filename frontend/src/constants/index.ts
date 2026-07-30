@@ -17,13 +17,10 @@ export const LEAD_STATUSES = [
 ] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
-// Statuses a rep can set manually on the lead detail page (the rest are
-// system-managed or not in use yet).
 export const LEAD_DETAIL_STATUS_OPTIONS: LeadStatus[] = [
   'INTERESTED', 'NOT_INTERESTED', 'FOLLOW_UP', 'CONVERTED', 'INVALID', 'NOT_REACHABLE',
 ];
 
-// status -> MUI chip color
 export const STATUS_COLOR: Record<LeadStatus, 'default' | 'info' | 'primary' | 'success' | 'warning' | 'error'> = {
   NEW: 'info',
   ASSIGNED: 'primary',
@@ -43,7 +40,6 @@ export const STATUS_COLOR: Record<LeadStatus, 'default' | 'info' | 'primary' | '
 export const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
 export type Priority = (typeof PRIORITIES)[number];
 
-// priority -> MUI chip color
 export const PRIORITY_COLOR: Record<string, 'default' | 'info' | 'warning' | 'error'> = {
   LOW: 'default',
   MEDIUM: 'info',
@@ -58,22 +54,12 @@ export const LEAD_SOURCES = [
 export const LEAD_TYPES = ['EXHIBITION', 'VISITOR', 'DELEGATE', 'SPEAKER'] as const;
 export type LeadType = (typeof LEAD_TYPES)[number];
 
-// ---------------------------------------------------------------------------
-// External (non-exhibitor) leads
-// ---------------------------------------------------------------------------
-
-// Non-exhibitor lead types. These live in the external/local-CRM list, not the
-// exhibitor Lead table — converting a lead to one of these moves it out of Lead
-// Management.
 export const EXTERNAL_LEAD_TYPES = ['VISITOR', 'DELEGATE', 'SPEAKER'] as const;
 export type ExternalLeadType = (typeof EXTERNAL_LEAD_TYPES)[number];
 
-// Staging categories in Other Leads. Adds OTHER for unrecognized interests,
-// which is never dropped so a lead is never silently lost.
 export const EXTERNAL_CATEGORIES = [...EXTERNAL_LEAD_TYPES, 'OTHER'] as const;
 export type ExternalCategory = (typeof EXTERNAL_CATEGORIES)[number];
 
-// category -> MUI chip color
 export const CATEGORY_COLOR: Record<string, 'info' | 'secondary' | 'warning' | 'default'> = {
   VISITOR: 'info',
   DELEGATE: 'secondary',
@@ -81,20 +67,12 @@ export const CATEGORY_COLOR: Record<string, 'info' | 'secondary' | 'warning' | '
   OTHER: 'default',
 };
 
-// Sentinel used by the Other Leads classify popup. Not an ExternalCategory:
-// choosing it moves the lead into Lead Management as an exhibitor lead instead
-// of reclassifying it in place.
 export const EXHIBITOR = 'EXHIBITOR';
 
-// Options shown in the classify popup, in display order.
 export const RECLASSIFY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: EXHIBITOR, label: 'Exhibitor — move to Lead Management' },
   ...EXTERNAL_CATEGORIES.map((c) => ({ value: c, label: prettyLabel(c) })),
 ];
-
-// ---------------------------------------------------------------------------
-// Follow-ups
-// ---------------------------------------------------------------------------
 
 export const FOLLOWUP_SCOPES = [
   { key: 'overdue', label: 'Overdue' },
@@ -103,24 +81,15 @@ export const FOLLOWUP_SCOPES = [
   { key: 'all', label: 'All' },
 ] as const;
 
-// ---------------------------------------------------------------------------
-// Assignment & charts
-// ---------------------------------------------------------------------------
-
-// Only team leaders (3) & sales executives (4) are sensible assignment targets.
 export const ASSIGNABLE_ROLE_LEVELS = [3, 4];
 
-// Shared categorical palette for charts (pie slices, series).
 export const CHART_COLORS = [
   '#4f46e5', '#0ea5e9', '#16a34a', '#d97706', '#dc2626',
   '#7c3aed', '#0891b2', '#65a30d', '#db2777', '#475569', '#ca8a04',
 ];
 
-// Leaderboard rank colors: gold, silver, bronze.
 export const MEDAL_COLORS = ['#facc15', '#cbd5e1', '#d97706'];
 
-// Lead source channels — drives the Source filter and the Source column.
-// GOOGLE / LINKEDIN have no data yet (coming later) but appear as options.
 export const LEAD_SOURCE_CHANNELS = [
   { value: 'SPACE_BOOKING', label: 'Space Booking Form' },
   { value: 'POST_SHOW_DOWNLOAD', label: 'Post Show' },
@@ -129,18 +98,13 @@ export const LEAD_SOURCE_CHANNELS = [
   { value: 'META', label: 'Meta' },
 ] as const;
 
-// Pretty label for an UPPER_SNAKE enum value, e.g. SOCIAL_MEDIA -> "Social Media".
-// Declared as a function (not a const arrow) so it is hoisted — constants defined
-// above, such as RECLASSIFY_OPTIONS, call it at module-init time.
 export function prettyLabel(v: string): string {
   return v.toLowerCase().split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-// Human label for a source channel value; falls back to prettyLabel.
 export const sourceChannelLabel = (v?: string | null) =>
   LEAD_SOURCE_CHANNELS.find((c) => c.value === v)?.label ?? (v ? prettyLabel(v) : '');
 
-// Sentence case for an UPPER_SNAKE enum value, e.g. NOT_REACHABLE -> "Not reachable".
 export const sentenceCase = (v: string) => {
   const s = v.replace(/_/g, ' ').toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -150,13 +114,12 @@ export interface NavItem {
   label: string;
   path: string;
   icon: SvgIconComponent;
-  permission?: string; // required permission key (omitted = any authenticated)
-  maxLevel?: number; // only visible to users at or above this role level (1 = Super Admin, 2 = Head, …)
+  permission?: string; 
+  maxLevel?: number; 
 }
 
-// Sidebar menu — items are filtered by the user's permission set at render time.
 export const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon, permission: 'dashboard.view' },
+  { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon, permission: 'dashboard.view', maxLevel: 1 },
   { label: 'Lead Management', path: '/leads', icon: GroupsIcon, permission: 'lead.view', maxLevel: 2 },
   { label: 'Assigned Leads', path: '/leads/assigned', icon: AssignmentIndIcon, permission: 'lead.view' },
   { label: 'Followups', path: '/followups', icon: EventNoteIcon, permission: 'lead.view' },
@@ -168,3 +131,11 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Roles', path: '/roles', icon: SecurityIcon, permission: 'role.manage' },
   { label: 'Settings', path: '/settings', icon: SettingsIcon, maxLevel: 1 },
 ];
+
+// Where a user lands on "/" and straight after signing in. The Dashboard is
+// Super Admin only, so everyone else starts on their own Assigned Leads.
+export const landingPath = (level: number) => (level === 1 ? '/dashboard' : '/leads/assigned');
+
+// The leads list to send a user back to. Lead Management is levels 1–2 only, so
+// sending anyone else there lands them on a 403 instead of a list.
+export const leadsListPath = (level: number) => (level <= 2 ? '/leads' : '/leads/assigned');

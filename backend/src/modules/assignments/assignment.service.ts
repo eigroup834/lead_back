@@ -3,6 +3,7 @@ import { prisma } from '@config/prisma';
 import { redis } from '@config/redis';
 import { cache } from '@services/cache.service';
 import { AppError } from '@utils/AppError';
+import { notifyAssignments } from './assignment.mailer';
 import type { AssignBulkInput, AssignSingleInput, AutoAssignInput } from './assignment.validator';
 
 // Persisted round-robin pointer so distribution stays fair across requests.
@@ -47,6 +48,9 @@ export const assignmentService = {
   async single(input: AssignSingleInput, byId: string) {
     await prisma.$transaction((tx) => assignOne(tx, input.leadId, input.assignToId, byId, 'SINGLE', 'MANUAL', input.note));
     await bustDashboard();
+    // Fire-and-forget: the assignment is already committed, so a mail failure
+    // must not surface as a failed assignment.
+    notifyAssignments([input.leadId], input.assignToId, byId);
     return { leadId: input.leadId, assignedTo: input.assignToId };
   },
 
@@ -57,6 +61,7 @@ export const assignmentService = {
       }
     });
     await bustDashboard();
+    notifyAssignments(input.leadIds, input.assignToId, byId);
     return { count: input.leadIds.length, assignedTo: input.assignToId };
   },
 
@@ -77,16 +82,23 @@ export const assignmentService = {
 
     const poolKey = input.teamId ?? 'global';
     const result: Record<string, number> = {};
+    // Round-robin spreads leads across the pool, so group them per assignee and
+    // mail each person their own set.
+    const perAssignee = new Map<string, string[]>();
 
     await prisma.$transaction(async (tx) => {
       for (const leadId of input.leadIds) {
         const idx = await nextRoundRobinIndex(poolKey, pool!.length);
         const assignTo = pool![idx];
         const okAssigned = await assignOne(tx, leadId, assignTo, byId, 'AUTO', 'ROUND_ROBIN');
-        if (okAssigned) result[assignTo] = (result[assignTo] ?? 0) + 1;
+        if (okAssigned) {
+          result[assignTo] = (result[assignTo] ?? 0) + 1;
+          perAssignee.set(assignTo, [...(perAssignee.get(assignTo) ?? []), leadId]);
+        }
       }
     });
     await bustDashboard();
+    for (const [assignTo, ids] of perAssignee) notifyAssignments(ids, assignTo, byId);
     return { strategy: input.strategy, distribution: result, total: input.leadIds.length };
   },
 };

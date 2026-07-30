@@ -24,7 +24,6 @@ interface FiltersRef {
   members: Array<{ id: string; name: string }>;
 }
 
-// strip empty values so we don't send blank query params
 const clean = (f?: DashFilter | void) =>
   Object.fromEntries(Object.entries((f as DashFilter | undefined) ?? {}).filter(([, v]) => v !== undefined && v !== '' && v !== null));
 

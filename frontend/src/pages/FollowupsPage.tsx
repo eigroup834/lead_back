@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
@@ -13,15 +13,35 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PhoneIcon from '@mui/icons-material/Phone';
 import EmailIcon from '@mui/icons-material/Email';
 import StatusChip from '@/components/StatusChip';
-import { LEAD_STATUSES, FOLLOWUP_SCOPES, PRIORITY_COLOR, sentenceCase } from '@/constants';
+import { LEAD_STATUSES, FOLLOWUP_SCOPES, PRIORITIES, PRIORITY_COLOR, sentenceCase } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   useListFollowupsQuery, useFollowupCountsQuery, useUpdateFollowupMutation, useListUsersQuery, type FollowupRow,
 } from '@/features/adminApi';
 import { useChangeStatusMutation } from '@/features/leads/leadsApi';
+import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const isOverdue = (iso: string) => new Date(iso) < startOfToday();
+
+type FollowupSortKey = 'company' | 'reach' | 'event' | 'status' | 'followupDate' | 'priority' | 'assignee' | 'note';
+
+const rank = (list: readonly string[], v?: string) => {
+  const i = list.indexOf(v ?? '');
+  return i === -1 ? list.length : i;
+};
+
+
+const SORT_VALUE: Record<FollowupSortKey, (f: FollowupRow) => string | number> = {
+  company: (f) => f.lead?.company || [f.lead?.firstName, f.lead?.lastName].filter(Boolean).join(' ') || '',
+  reach: (f) => f.lead?.mobile || f.lead?.email || '',
+  event: (f) => f.lead?.eventName || '',
+  status: (f) => rank(LEAD_STATUSES, f.lead?.status),
+  followupDate: (f) => `${f.followupDate}T${f.followupTime ?? ''}`,
+  priority: (f) => rank(PRIORITIES, f.priority),
+  assignee: (f) => (f.assignee ? `${f.assignee.firstName} ${f.assignee.lastName}` : ''),
+  note: (f) => f.note || '',
+};
 
 export default function FollowupsPage() {
   const navigate = useNavigate();
@@ -30,6 +50,7 @@ export default function FollowupsPage() {
 
   const [scope, setScope] = useState('today');
   const [assigneeId, setAssigneeId] = useState('');
+  const { sort, toggle: toggleSort } = useSort<FollowupSortKey>({ by: 'followupDate', dir: 'asc' });
   const { data, isFetching } = useListFollowupsQuery({ scope, assigneeId: assigneeId || undefined });
   const { data: countsData } = useFollowupCountsQuery({ assigneeId: assigneeId || undefined });
   const { data: users } = useListUsersQuery(undefined, { skip: !isManager });
@@ -42,7 +63,7 @@ export default function FollowupsPage() {
   const [reschedule, setReschedule] = useState<{ row: FollowupRow; date: string; time: string } | null>(null);
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
 
-  const rows = data?.data ?? [];
+  const rows = useMemo(() => sortRows(data?.data ?? [], sort.by, sort.dir, SORT_VALUE), [data, sort]);
   const assignableUsers = [...(users?.data ?? [])]
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
@@ -134,14 +155,14 @@ export default function FollowupsPage() {
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Company / Contact</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Reach</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Event</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Lead status</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Follow-up</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Priority</TableCell>
-                {isManager && <TableCell sx={{ fontWeight: 700 }}>Assignee</TableCell>}
-                <TableCell sx={{ fontWeight: 700 }}>Note</TableCell>
+                <SortableCell field="company" sort={sort} onSort={toggleSort}>Company / Contact</SortableCell>
+                <SortableCell field="reach" sort={sort} onSort={toggleSort}>Reach</SortableCell>
+                <SortableCell field="event" sort={sort} onSort={toggleSort}>Event</SortableCell>
+                <SortableCell field="status" sort={sort} onSort={toggleSort}>Lead status</SortableCell>
+                <SortableCell field="followupDate" sort={sort} onSort={toggleSort}>Follow-up</SortableCell>
+                <SortableCell field="priority" sort={sort} onSort={toggleSort}>Priority</SortableCell>
+                {isManager && <SortableCell field="assignee" sort={sort} onSort={toggleSort}>Assignee</SortableCell>}
+                <SortableCell field="note" sort={sort} onSort={toggleSort}>Note</SortableCell>
                 <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -277,7 +298,6 @@ export default function FollowupsPage() {
   );
 }
 
-// Small helper so the kebab passes the anchor element up cleanly.
 function IconButtonMenu({ onClick }: { onClick: (el: HTMLElement) => void }) {
   return (
     <Tooltip title="More">

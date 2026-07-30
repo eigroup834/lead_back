@@ -17,6 +17,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DownloadIcon from '@mui/icons-material/Download';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import StatusChip from '@/components/StatusChip';
+import { SortableCell, useSort } from '@/components/SortableCell';
 import {
   LEAD_SOURCE_CHANNELS, LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES,
   prettyLabel, sentenceCase, sourceChannelLabel, type ExternalLeadType,
@@ -26,28 +27,40 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   useListLeadsQuery, useAssignBulkMutation, useAssignSingleMutation,
-  useConvertExternalMutation, useArchiveToHistoricalMutation,
+  useConvertExternalMutation, useArchiveToHistoricalMutation, useHistoricalMatchesMutation,
+  type HistoricalMatch,
 } from '@/features/leads/leadsApi';
 import { useListUsersQuery } from '@/features/adminApi';
 import { useDashFiltersQuery } from '@/features/dashboard/dashboardApi';
 import type { Lead } from '@/features/types';
 import ClearIcon from '@mui/icons-material/Clear';
 
+
 const ALL_COLUMNS = [
-  { key: 'company', label: 'Company' },
-  { key: 'name', label: 'Contact' },
-  { key: 'email', label: 'Email' },
-  { key: 'mobile', label: 'Mobile' },
-  { key: 'country', label: 'Country' },
-  { key: 'source', label: 'Source' },
-  { key: 'status', label: 'Status' },
-  { key: 'assignedUser', label: 'Assigned To' },
+  // Sorts by createdAt, not createDate: createDate is null on a good share of
+  // leads (including synced ones), and nulls-last would park those at the bottom
+  // in both directions — so today's leads would never reach the top.
+  { key: 'date', label: 'Lead Date', sort: 'createdAt' },
+  { key: 'company', label: 'Company', sort: 'company' },
+  { key: 'name', label: 'Contact', sort: 'firstName' },
+  { key: 'email', label: 'Email', sort: 'email' },
+  { key: 'mobile', label: 'Mobile', sort: 'mobile' },
+  { key: 'country', label: 'Country', sort: 'country' },
+  // How much shell space the enquiry asked for. Only the space-booking flow
+  // captures it — post-show download rows have no such column.
+  { key: 'shellSpace', label: 'Shell Space', sort: 'shellSpace' },
+  { key: 'source', label: 'Source', sort: 'sourceChannel' },
+  { key: 'status', label: 'Status', sort: 'status' },
+  { key: 'assignedUser', label: 'Assigned To', sort: 'assignedUser' },
 ] as const;
+
+type LeadSortKey = (typeof ALL_COLUMNS)[number]['sort'] | 'createdAt';
 
 export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) {
   const navigate = useNavigate();
   const { has, user, level } = usePermissions();
   const isSuperAdmin = level === 1;
+  const canFilterByMember = Boolean(assignedOnly) && level < 4 && has('user.view');
 
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
@@ -64,12 +77,14 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const [colAnchor, setColAnchor] = useState<null | HTMLElement>(null);
   const [filterAnchor, setFilterAnchor] = useState<null | HTMLElement>(null);
   const [rowMenu, setRowMenu] = useState<{ el: HTMLElement; lead: Lead } | null>(null);
+  const { sort, toggle: toggleSort } = useSort<LeadSortKey>({ by: 'createdAt', dir: 'desc' }, () => setPage(0));
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignMode, setAssignMode] = useState<'single' | 'bulk'>('bulk');
   const [assignLeadId, setAssignLeadId] = useState<string | null>(null);
   const [assignTo, setAssignTo] = useState('');
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
+  const [dupWarning, setDupWarning] = useState<{ threshold: number; matches: HistoricalMatch[] } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [convertTarget, setConvertTarget] = useState<{ lead: Lead; type: ExternalLeadType } | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -78,43 +93,37 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
 
   const { data, isFetching, refetch } = useListLeadsQuery({
     page: page + 1, limit: rowsPerPage, q: debounced || undefined,
-    // Lead Management shows only NEW leads; the Assigned page keeps all statuses
-    // (or a chosen one via the Status filter).
     status: assignedOnly ? (statusFilter ? [statusFilter] : undefined) : ['NEW'],
-    // 'HISTORICAL' filters the source field; the rest are source channels.
     sourceChannel: sourceChannel && sourceChannel !== 'HISTORICAL' ? sourceChannel : undefined,
     source: sourceChannel === 'HISTORICAL' ? 'HISTORICAL' : undefined,
     country: country || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
-    // Assigned Leads page → only leads that have an assignee; assignee dropdown narrows further.
     assigned: assignedOnly || undefined,
     assignedUserId: assignee || undefined,
-    sortBy: 'createdAt', sortDir: 'desc',
+    sortBy: sort.by, sortDir: sort.dir,
   }, { refetchOnMountOrArgChange: true });
-  const { data: users } = useListUsersQuery(undefined, { skip: !has('lead.assign') });
+  
+  const { data: users } = useListUsersQuery({ limit: 100 }, { skip: !has('lead.assign') && !canFilterByMember });
   const { data: refFilters } = useDashFiltersQuery(undefined, { skip: !has('dashboard.view') });
 
   const [assignBulk, { isLoading: bulkLoading }] = useAssignBulkMutation();
   const [assignSingle, { isLoading: singleLoading }] = useAssignSingleMutation();
   const [convertExternal, { isLoading: convertLoading }] = useConvertExternalMutation();
   const [archiveToHistorical, { isLoading: archiving }] = useArchiveToHistoricalMutation();
+  const [historicalMatches, { isLoading: checkingDup }] = useHistoricalMatchesMutation();
 
   const canAssign = has('lead.assign');
-  // Reassigning an already-assigned lead is Super Admin only; initial assign stays for assigners.
   const canAssignAction = assignedOnly ? isSuperAdmin : canAssign;
   const canEdit = has('lead.edit');
-  // Archiving converted leads into Historical. Only meaningful on the main pipeline.
   const canArchive = has('lead.edit') && !assignedOnly;
-  const canSelect = canAssign || canArchive; // whether the checkbox column renders
-  const showActions = canAssign || canEdit; // whether the row kebab column renders
-  // Leads on the Assigned page already have an assignee, so the action is "Reassign".
+  const canSelect = canAssign || canArchive; 
+  const showActions = canAssign || canEdit; 
   const assignVerb = assignedOnly ? 'Reassign' : 'Assign';
 
   const leads = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
   const selectedIds = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected]);
-  // Of the current selection, how many are eligible (Converted) to archive.
   const selectedConverted = useMemo(
     () => leads.filter((l) => selected[l.id] && l.status === 'CONVERTED').length,
     [leads, selected],
@@ -125,9 +134,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
   const resetPaging = () => setPage(0);
-
-  // Filters split: search + source stay inline; the rest live behind the
-  // "Filters" button. Badge shows how many of those advanced filters are active.
   const advancedActive = [country, dateFrom, dateTo].filter(Boolean).length;
   const anyActive = Boolean(sourceChannel || statusFilter || country || dateFrom || dateTo || assignee || search);
   const clearAll = () => {
@@ -138,7 +144,22 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const openBulkAssign = () => { setAssignMode('bulk'); setAssignLeadId(null); setAssignOpen(true); };
   const openSingleAssign = (lead: Lead) => { setAssignMode('single'); setAssignLeadId(lead.id); setAssignOpen(true); setRowMenu(null); };
 
+  // Before assigning, warn if any of these companies already exist in Historical
+  // Data. The check never blocks assignment — a failure here just proceeds.
+  const confirmThenAssign = async () => {
+    const ids = assignMode === 'single' && assignLeadId ? [assignLeadId] : selectedIds;
+    try {
+      const res = await historicalMatches({ leadIds: ids }).unwrap();
+      if (res.data.matches.length) {
+        setDupWarning({ threshold: res.data.threshold, matches: res.data.matches });
+        return;
+      }
+    } catch { /* duplicate check is advisory — fall through and assign */ }
+    await doAssign();
+  };
+
   const doAssign = async () => {
+    setDupWarning(null);
     try {
       if (assignMode === 'single' && assignLeadId) {
         await assignSingle({ leadId: assignLeadId, assignToId: assignTo }).unwrap();
@@ -168,6 +189,8 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
       if (dateTo) params.set('dateTo', dateTo);
       if (assignedOnly) params.set('assigned', 'true');
       if (assignee) params.set('assignedUserId', assignee);
+      params.set('sortBy', sort.by);
+      params.set('sortDir', sort.dir);
       const res = await fetch(`/api/v1/leads/export?${params.toString()}`, {
         headers: token ? { authorization: `Bearer ${token}` } : {},
         credentials: 'include',
@@ -250,6 +273,18 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
               </Select>
             </FormControl>
           )}
+          {canFilterByMember && (
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Team member</InputLabel>
+              <Select label="Team member" value={assignee} onChange={(e) => { setAssignee(e.target.value); resetPaging(); }}>
+                <MenuItem value="">All members</MenuItem>
+                {assignableUsers.map((u) => (
+                  <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
+                ))}
+                {assignableUsers.length === 0 && <MenuItem disabled>No users found</MenuItem>}
+              </Select>
+            </FormControl>
+          )}
 
           <Box sx={{ flex: 1 }} />
 
@@ -325,7 +360,9 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
                     />
                   </TableCell>
                 )}
-                {visibleCols.map((c) => <TableCell key={c.key} sx={{ fontWeight: 700 }}>{c.label}</TableCell>)}
+                {visibleCols.map((c) => (
+                  <SortableCell key={c.key} field={c.sort} sort={sort} onSort={toggleSort}>{c.label}</SortableCell>
+                ))}
                 {showActions && <TableCell padding="checkbox" />}
               </TableRow>
             </TableHead>
@@ -474,7 +511,55 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAssignOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={!assignTo || bulkLoading || singleLoading} onClick={doAssign}>{assignVerb}</Button>
+          <Button
+            variant="contained"
+            disabled={!assignTo || bulkLoading || singleLoading || checkingDup}
+            onClick={confirmThenAssign}
+          >
+            {checkingDup ? 'Checking…' : assignVerb}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Already in Historical Data? Warn before assigning, don't block. */}
+      <Dialog open={!!dupWarning} onClose={() => setDupWarning(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Already in Historical Data</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {dupWarning?.matches.length === 1
+              ? '1 of these leads matches a company already in the historical archive.'
+              : `${dupWarning?.matches.length} of these leads match companies already in the historical archive.`}
+            {' '}Matching at {Math.round((dupWarning?.threshold ?? 0.9) * 100)}% or above on company name.
+          </Alert>
+          <Stack spacing={2}>
+            {dupWarning?.matches.map((m) => (
+              <Box key={m.leadId}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>{m.company}</Typography>
+                <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                  {m.matches.map((h) => (
+                    <li key={h.id}>
+                      <Typography variant="caption">
+                        {h.company}
+                        {h.eventYear ? ` · ${h.eventYear}` : ''}
+                        {h.assignedTo ? ` · was with ${h.assignedTo}` : ''}
+                        {' · '}{Math.round(h.score * 100)}% match
+                      </Typography>
+                    </li>
+                  ))}
+                </Box>
+              </Box>
+            ))}
+          </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            This company may have exhibited before. Check the Historical Data tab for past
+            participation before working the lead — you can still assign it now.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDupWarning(null)}>Cancel</Button>
+          <Button variant="contained" disabled={bulkLoading || singleLoading} onClick={doAssign}>
+            {assignVerb} anyway
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -485,8 +570,30 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   );
 }
 
+// The lead's own registration date when the source provided one, otherwise the
+// date it reached us. Today and yesterday are labelled so the newest leads are
+// obvious at a glance; the full timestamp is in the tooltip.
+function leadDateCell(l: Lead) {
+  const iso = l.createDate ?? l.createdAt;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000);
+  const label = days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString();
+
+  return (
+    <Tooltip title={`${d.toLocaleString()}${l.createDate ? '' : ' (date added)'}`}>
+      <Typography variant="body2" sx={{ whiteSpace: 'nowrap', fontWeight: days === 0 ? 700 : 400 }} color={days === 0 ? 'primary.main' : 'inherit'}>
+        {label}
+      </Typography>
+    </Tooltip>
+  );
+}
+
 function renderCell(key: string, l: Lead) {
   switch (key) {
+    case 'date': return leadDateCell(l);
     case 'name': return [l.firstName, l.lastName].filter(Boolean).join(' ') || '—';
     case 'status': return <StatusChip status={l.status} />;
     case 'assignedUser': return l.assignedUser ? `${l.assignedUser.firstName} ${l.assignedUser.lastName}` : <Chip label="Unassigned" size="small" variant="outlined" />;

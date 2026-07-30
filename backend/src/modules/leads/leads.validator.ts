@@ -5,7 +5,12 @@ export const LEAD_STATUSES = [
   'FOLLOW_UP', 'HOT', 'WARM', 'COLD', 'CONVERTED', 'INVALID', 'LOST',
 ] as const;
 
-export const SORTABLE = ['createdAt', 'createDate', 'company', 'status'] as const;
+// Every column the leads table can be sorted by. 'assignedUser' sorts through the
+// relation (see RELATION_SORTS in leads.repository); the rest are scalar columns.
+export const SORTABLE = [
+  'createdAt', 'createDate', 'company', 'status', 'firstName', 'email', 'mobile',
+  'country', 'sourceChannel', 'shellSpace', 'assignedUser',
+] as const;
 
 export const LEAD_SOURCES = [
   'WEBSITE', 'MANUAL', 'REFERRAL', 'WALK_IN', 'EMAIL', 'PHONE', 'SOCIAL_MEDIA', 'PARTNER', 'HISTORICAL', 'OTHER',
@@ -87,6 +92,55 @@ export const createLeadSchema = z
     message: 'Provide at least a company, name, email, or mobile',
   });
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
+
+// Bulk import from a spreadsheet. Rows are validated individually so one bad row
+// reports back as an error instead of rejecting the whole file; `row` is the
+// spreadsheet row number the client parsed it from, so errors can be pointed at
+// the right line. Manually imported leads are always exhibitor leads (status New).
+export const BULK_IMPORT_MAX = 2000;
+
+export const bulkImportRow = z.object({
+  row: z.coerce.number().int().min(1),
+  title: z.string().trim().max(50).optional(),
+  company: z.string().trim().max(200).optional(),
+  firstName: z.string().trim().max(100).optional(),
+  lastName: z.string().trim().max(100).optional(),
+  designation: z.string().trim().max(150).optional(),
+  email: z.string().trim().max(200).optional(),
+  mobile: z.string().trim().max(40).optional(),
+  phone: z.string().trim().max(40).optional(),
+  website: z.string().trim().max(200).optional(),
+  address: z.string().trim().max(500).optional(),
+  city: z.string().trim().max(100).optional(),
+  state: z.string().trim().max(100).optional(),
+  zipCode: z.string().trim().max(20).optional(),
+  country: z.string().trim().max(100).optional(),
+  shellSpace: z.string().trim().max(100).optional(),
+  rawSpace: z.string().trim().max(100).optional(),
+  learnAbout: z.string().trim().max(200).optional(),
+  eventName: z.string().trim().max(200).optional(),
+  remarks: z.string().trim().max(2000).optional(),
+  source: z.enum(LEAD_SOURCES).optional(),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+});
+export type BulkImportRow = z.infer<typeof bulkImportRow>;
+
+export const bulkImportSchema = z.object({
+  // Rows are kept loose here (z.any) so a malformed row surfaces as a per-row
+  // error in the response rather than a 400 that hides which line was wrong.
+  rows: z.array(z.unknown()).min(1).max(BULK_IMPORT_MAX),
+  assignToId: z.string().uuid().optional(),
+  // Skip rows whose email or mobile already exists in Lead Management.
+  skipDuplicates: z.coerce.boolean().default(true),
+});
+export type BulkImportInput = z.infer<typeof bulkImportSchema>;
+
+// Pre-assignment duplicate check: are these leads' companies already in the
+// year-tagged historical archive?
+export const historicalMatchSchema = z.object({
+  leadIds: z.array(z.string().uuid()).min(1).max(500),
+});
+export type HistoricalMatchInput = z.infer<typeof historicalMatchSchema>;
 
 export const changeStatusSchema = z.object({
   status: z.enum(LEAD_STATUSES),

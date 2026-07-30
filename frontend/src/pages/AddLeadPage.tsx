@@ -1,36 +1,32 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Button, Card, CardContent, CardHeader, Grid, MenuItem, Stack, TextField,
+  Box, Button, Card, CardContent, CardHeader, Grid, MenuItem, Stack, Tab, Tabs, TextField,
   Typography, Snackbar, Alert, FormControl, InputLabel, Select, ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { LEAD_SOURCES, PRIORITIES, prettyLabel } from '@/constants';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import LeadExcelImport from '@/components/LeadExcelImport';
+import { LEAD_SOURCES, PRIORITIES, leadsListPath, prettyLabel } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
 import { useCreateHistoricalLeadMutation } from '@/features/historical/historicalApi';
 import { useListUsersQuery } from '@/features/adminApi';
 
 const empty = {
-  // classification
   source: 'MANUAL', leadType: 'EXHIBITION', status: 'NEW', priority: 'MEDIUM',
-  // contact
   title: '', firstName: '', lastName: '', designation: '', email: '', mobile: '',
-  // company / participation
   company: '', shellSpace: '', rawSpace: '', website: '', learnAbout: '',
-  // address
   address: '', city: '', state: '', zipCode: '', country: '',
-  // other
   remarks: '',
 };
 
 type Form = typeof empty;
 
-// Basic client-side validation.
-const NAME_RE = /^[A-Za-z\s.'-]+$/;             // alphabetic (+ common name punctuation)
+const NAME_RE = /^[A-Za-z\s.'-]+$/;             
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MOBILE_RE = /^[+]?[\d\s-]{7,20}$/;         // digits (optional +, spaces, dashes)
+const MOBILE_RE = /^[+]?[\d\s-]{7,20}$/;         
 
 function validate(form: Form) {
   return {
@@ -56,9 +52,10 @@ function serverError(error: unknown): string {
 
 export default function AddLeadPage() {
   const navigate = useNavigate();
-  const { has } = usePermissions();
+  const { has, level } = usePermissions();
   const canAssign = has('lead.assign');
   const [form, setForm] = useState<Form>(empty);
+  const [mode, setMode] = useState<'SINGLE' | 'EXCEL'>('SINGLE');
   const [destination, setDestination] = useState<'LEAD' | 'HISTORICAL'>('LEAD');
   const [assignTo, setAssignTo] = useState('');
   const [createLead, { isLoading, error }] = useCreateLeadMutation();
@@ -105,7 +102,7 @@ export default function AddLeadPage() {
     // has no detail page here — just confirm and return to the leads list.
     if (res.meta?.external) {
       setToast(`${prettyLabel(form.leadType || 'Visitor')} lead saved to the external list`);
-      setTimeout(() => navigate('/leads'), 900);
+      setTimeout(() => navigate(leadsListPath(level)), 900);
       return;
     }
     // Optionally assign to a member on creation → lands in that member's Assigned Leads.
@@ -120,11 +117,41 @@ export default function AddLeadPage() {
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Typography variant="h5">Add Lead</Typography>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/leads')}>Back to leads</Button>
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(leadsListPath(level))}>Back to leads</Button>
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{serverError(error)}</Alert>}
 
+      <Tabs value={mode} onChange={(_e, v) => setMode(v)} sx={{ mb: 2.5, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab value="SINGLE" label="One lead" />
+        <Tab value="EXCEL" label="Import from Excel" icon={<UploadFileIcon fontSize="small" />} iconPosition="start" />
+      </Tabs>
+
+      {mode === 'EXCEL' ? (
+        <Stack spacing={2.5}>
+          {canAssign && (
+            <Card>
+              <CardContent>
+                <FormControl size="small" sx={{ minWidth: 280 }}>
+                  <InputLabel>Assign imported leads to (optional)</InputLabel>
+                  <Select
+                    label="Assign imported leads to (optional)"
+                    value={assignTo}
+                    onChange={(e) => setAssignTo(e.target.value)}
+                  >
+                    <MenuItem value=""><em>Leave unassigned</em></MenuItem>
+                    {members.map((u) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </CardContent>
+            </Card>
+          )}
+          <LeadExcelImport
+            assignToId={assignTo || undefined}
+            onImported={(n) => setToast(`${n} lead(s) imported`)}
+          />
+        </Stack>
+      ) : (
       <Stack spacing={2.5}>
         {/* Destination + assignment */}
         <Card>
@@ -242,6 +269,7 @@ export default function AddLeadPage() {
           </Button>
         </Box>
       </Stack>
+      )}
 
       <Snackbar open={!!toast} autoHideDuration={1500} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
         {toast ? <Alert severity="success">{toast}</Alert> : undefined}

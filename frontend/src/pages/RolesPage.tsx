@@ -16,7 +16,6 @@ export default function RolesPage() {
   const permList = perms?.data ?? [];
   const active = roleList.find((r) => r.id === selectedRole) ?? roleList[0];
 
-  // group permissions by module for the matrix
   const grouped = useMemo(() => {
     const g: Record<string, typeof permList> = {};
     permList.forEach((p) => { (g[p.module] ??= []).push(p); });
@@ -31,7 +30,6 @@ export default function RolesPage() {
     setDraft(map);
   };
 
-  // initialize the draft matrix once roles + permissions have loaded
   useEffect(() => {
     if (active && permList.length && Object.keys(draft).length === 0) {
       const map: Record<string, boolean> = {};
@@ -39,7 +37,6 @@ export default function RolesPage() {
       setSelectedRole(active.id);
       setDraft(map);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id, permList.length]);
 
   const onSave = async () => {

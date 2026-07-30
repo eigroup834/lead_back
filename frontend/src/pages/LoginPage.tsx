@@ -7,6 +7,8 @@ import { useLoginMutation } from '@/features/auth/authApi';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { setCredentials } from '@/features/auth/authSlice';
 import { api } from '@/app/api';
+import { landingPath } from '@/constants';
+import { usePermissions } from '@/hooks/usePermissions';
 import { GRADIENTS } from '@/theme';
 
 const schema = z.object({ email: z.string().email(), password: z.string().min(6) });
@@ -17,9 +19,9 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const token = useAppSelector((s) => s.auth.accessToken);
+  const { level } = usePermissions();
   const [login, { isLoading, error }] = useLoginMutation();
 
-  // Surface the real server error (e.g. rate-limit) instead of a generic message.
   const errorMessage = (() => {
     if (!error) return null;
     const status = (error as { status?: number }).status;
@@ -33,15 +35,17 @@ export default function LoginPage() {
     defaultValues: { email: '', password: '' },
   });
 
-  if (token) return <Navigate to="/dashboard" replace />;
+  if (token) return <Navigate to={landingPath(level)} replace />;
 
   const onSubmit = async (values: FormValues) => {
     const res = await login(values).unwrap();
-    // Clear any cache from a previous session before this user's data loads.
     dispatch(api.util.resetApiState());
     dispatch(setCredentials({ accessToken: res.data.accessToken, user: res.data.user }));
-    const to = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard';
-    navigate(to, { replace: true });
+    // Return them to the page they were bounced from — unless that's the
+    // Dashboard and they aren't a Super Admin, which would just 403.
+    const home = landingPath(res.data.user.level);
+    const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
+    navigate(from && from !== '/dashboard' ? from : home, { replace: true });
   };
 
   return (

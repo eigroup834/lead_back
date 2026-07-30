@@ -22,11 +22,24 @@ import {
   useDashFiltersQuery, useSummaryQuery, useFunnelQuery, useMonthlyTrendQuery,
   useTeamPerformanceQuery, type DashFilter,
 } from '@/features/dashboard/dashboardApi';
+import type { TeamPerf } from '@/features/types';
+import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
+
+type TeamSortKey = 'name' | 'assigned' | 'calls' | 'followupsDone' | 'converted' | 'conversionRate';
+const TEAM_SORT_VALUE: Record<TeamSortKey, (t: TeamPerf) => string | number> = {
+  name: (t) => t.name,
+  assigned: (t) => t.assigned,
+  calls: (t) => t.calls,
+  followupsDone: (t) => t.followupsDone,
+  converted: (t) => t.converted,
+  conversionRate: (t) => t.conversionRate,
+};
 
 export default function AnalyticsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [userId, setUserId] = useState('');
+  const { sort, toggle: toggleSort } = useSort<TeamSortKey>({ by: 'converted', dir: 'desc' });
 
   const filter: DashFilter = useMemo(
     () => ({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, userId: userId || undefined }),
@@ -41,9 +54,10 @@ export default function AnalyticsPage() {
   const { data: team, isLoading: teamLoading } = useTeamPerformanceQuery(filter);
 
   const s = summary?.data;
-  const teamRows = team?.data ?? [];
+  const teamData = team?.data ?? [];
+  const teamRows = useMemo(() => sortRows(teamData, sort.by, sort.dir, TEAM_SORT_VALUE), [teamData, sort]);
   const monthlyData = (monthly?.data ?? []).map((m) => ({ ...m, label: new Date(m.month).toLocaleDateString(undefined, { month: 'short', year: '2-digit' }) }));
-  const teamChart = teamRows.slice(0, 10).map((t) => ({ name: t.name.split(' ')[0], Assigned: t.assigned, Converted: t.converted, Calls: t.calls }));
+  const teamChart = teamData.slice(0, 10).map((t) => ({ name: t.name.split(' ')[0], Assigned: t.assigned, Converted: t.converted, Calls: t.calls }));
 
   const clear = () => { setDateFrom(''); setDateTo(''); setUserId(''); };
 
@@ -164,12 +178,12 @@ export default function AnalyticsPage() {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Member</TableCell>
-                    <TableCell align="right">Assigned</TableCell>
-                    <TableCell align="right">Calls</TableCell>
-                    <TableCell align="right">Follow-ups done</TableCell>
-                    <TableCell align="right">Converted</TableCell>
-                    <TableCell align="right" sx={{ width: 180 }}>Conversion</TableCell>
+                    <SortableCell field="name" sort={sort} onSort={toggleSort}>Member</SortableCell>
+                    <SortableCell field="assigned" sort={sort} onSort={toggleSort} align="right">Assigned</SortableCell>
+                    <SortableCell field="calls" sort={sort} onSort={toggleSort} align="right">Calls</SortableCell>
+                    <SortableCell field="followupsDone" sort={sort} onSort={toggleSort} align="right">Follow-ups done</SortableCell>
+                    <SortableCell field="converted" sort={sort} onSort={toggleSort} align="right">Converted</SortableCell>
+                    <SortableCell field="conversionRate" sort={sort} onSort={toggleSort} align="right" sx={{ width: 180 }}>Conversion</SortableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>

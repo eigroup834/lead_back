@@ -60,9 +60,16 @@ export interface DownloadSourceRow {
   business_interest: string | null;
   event_name: string | null;
   ip_address: string | null;
+  // download_reg carries its timestamp in `date`; its `create_date` column
+  // exists but is always null. Read `date` first — see downloadCreateDate().
+  date: Date | null;
   create_date: Date | null;
   [key: string]: unknown;
 }
+
+/** The registration timestamp of a post-show row, whichever column holds it. */
+export const downloadCreateDate = (r: DownloadSourceRow): Date | null =>
+  r.date ?? r.create_date ?? null;
 
 export const sourceDb = {
   // Incremental fetch: only rows with id greater than the cursor, capped to batchSize.

@@ -238,6 +238,7 @@ model User {
   historicalUploads HistoricalUpload[]
   assignedExternalLeads ExternalLead[] @relation("ExternalAssignee")
   assignedHistoricalLeads HistoricalLead[] @relation("HistoricalAssignee")
+  historicalLeadEdits     HistoricalLeadEdit[]
 
   @@index([departmentId])
   @@index([teamId])
@@ -614,11 +615,31 @@ model HistoricalLead {
   specialRemarks     String?    @map("specialremarks")
   exhHistory         Json       @default("[]") @map("exh_history") // [{ year, sqm_spo }]
 
+  edits HistoricalLeadEdit[]
+
   @@index([eventYear])
   @@index([email])
   @@index([company])
   @@index([archivedAt])
+  @@index([eventName])
   @@map("historical_leads")
+}
+
+// Audit trail for historical-lead edits. Anyone who can see a record may edit it,
+// so every change is recorded: who, when, and the before/after of each field.
+model HistoricalLeadEdit {
+  id               String   @id @default(uuid()) @db.Uuid
+  historicalLeadId String   @map("historical_lead_id") @db.Uuid
+  editedById       String?  @map("edited_by_id") @db.Uuid
+  // [{ field, from, to }] — only the fields that actually changed
+  changes          Json
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  historicalLead HistoricalLead @relation(fields: [historicalLeadId], references: [id], onDelete: Cascade)
+  editedBy       User?          @relation(fields: [editedById], references: [id])
+
+  @@index([historicalLeadId, createdAt])
+  @@map("historical_lead_edits")
 }
 
 // ============================================================================

@@ -21,6 +21,64 @@ async function bustDashboard() {
   await cache.delPattern('dash:*');
 }
 
+// Row-level scope for historical leads: Super Admin (level 1) sees every record,
+// everyone else only the ones assigned to them.
+function historicalScope(user: AuthUser): Prisma.HistoricalLeadWhereInput {
+  return user.level === 1 ? {} : { assignedUserId: user.id };
+}
+
+// Editing and moving back to Lead Management are open to every user, but only on
+// records they can actually see — otherwise a rep could reach another member's
+// archive by guessing an id.
+async function assertEditable(user: AuthUser, id: string) {
+  const record = await prisma.historicalLead.findUnique({ where: { id } });
+  if (!record) throw AppError.notFound('Historical lead not found');
+  if (user.level !== 1 && record.assignedUserId !== user.id) {
+    throw AppError.forbidden('You can only change historical leads assigned to you');
+  }
+  return record;
+}
+
+// Fields whose before/after is recorded in the edit log, with display labels.
+const AUDITED_FIELDS = {
+  company: 'Company', name: 'Contact name', designation: 'Designation', email: 'Email',
+  mobile: 'Mobile', city: 'City', country: 'Country', eventName: 'Event name',
+  eventYear: 'Event year', industry: 'Industry', branchOffice: 'Branch office',
+  remark: 'Remark', specialRemarks: 'Special remarks', spaceSqm: 'Space (sqm)',
+} as const;
+
+export interface HistoricalEditChange {
+  field: string;
+  label: string;
+  from: string | null;
+  to: string | null;
+}
+
+const asText = (v: unknown): string | null =>
+  v === null || v === undefined || v === '' ? null : typeof v === 'string' ? v : JSON.stringify(v);
+
+// Sort keys that aren't scalar columns on HistoricalLead.
+const HISTORICAL_RELATION_SORTS: Record<string, (dir: Prisma.SortOrder) => Prisma.HistoricalLeadOrderByWithRelationInput> = {
+  assignedUser: (dir) => ({ assignedUser: { firstName: dir } }),
+};
+
+// Every sortable column here is nullable except archivedAt; blanks sort last so
+// they don't crowd the top of a descending sort. (Prisma rejects `nulls` on
+// required columns.)
+function historicalOrderBy(q: ListHistoricalLeadsQuery): Prisma.HistoricalLeadOrderByWithRelationInput[] {
+  const relation = HISTORICAL_RELATION_SORTS[q.sortBy];
+  const primary = (relation
+    ? relation(q.sortDir)
+    : q.sortBy === 'archivedAt'
+      ? { archivedAt: q.sortDir }
+      : { [q.sortBy]: { sort: q.sortDir, nulls: 'last' } }) as Prisma.HistoricalLeadOrderByWithRelationInput;
+  // Ties fall back to most-recently-archived first (the long-standing order),
+  // then id so paging stays stable when those tie too.
+  return q.sortBy === 'archivedAt'
+    ? [primary, { id: q.sortDir }]
+    : [primary, { archivedAt: 'desc' }, { id: 'desc' }];
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type Mapping = Partial<Record<MappableLeadField, string>>;
 type RowData = Record<string, unknown>;
@@ -208,15 +266,13 @@ export const historicalService = {
 
   async listLeads(user: AuthUser, q: ListHistoricalLeadsQuery) {
     // Once moved to Lead Management, a record drops out of this list (data kept).
-    const where: Prisma.HistoricalLeadWhereInput = { restoredLeadId: null };
-    // Only Super Admin (level 1) sees all and may filter by team member;
-    // everyone else sees only their own assigned historical leads.
-    if (user.level === 1) {
-      if (q.assigneeId) where.assignedUserId = q.assigneeId;
-    } else {
-      where.assignedUserId = user.id;
-    }
+    const where: Prisma.HistoricalLeadWhereInput = { restoredLeadId: null, ...historicalScope(user) };
+    // Only Super Admin (level 1) may narrow to a specific team member; everyone
+    // else is already pinned to their own records by the scope above.
+    if (user.level === 1 && q.assigneeId) where.assignedUserId = q.assigneeId;
     if (q.year) where.eventYear = q.year;
+    if (q.noEventName) where.eventName = null;
+    else if (q.eventName) where.eventName = q.eventName;
     if (q.dateFrom || q.dateTo) {
       where.archivedAt = {};
       if (q.dateFrom) (where.archivedAt as Prisma.DateTimeFilter).gte = q.dateFrom;
@@ -234,7 +290,7 @@ export const historicalService = {
       prisma.historicalLead.count({ where }),
       prisma.historicalLead.findMany({
         where,
-        orderBy: [{ eventYear: 'desc' }, { archivedAt: 'desc' }],
+        orderBy: historicalOrderBy(q),
         skip: (q.page - 1) * q.limit,
         take: q.limit,
         include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } },
@@ -254,14 +310,43 @@ export const historicalService = {
     return groups.map((g) => ({ year: g.eventYear as number, count: g._count._all }));
   },
 
+  // Distinct event names in the archive, with counts — drives the Event filter.
+  // Scoped like the list, so a rep is only offered events they actually have
+  // records for. The null group becomes the "(No event name)" option.
+  async events(user: AuthUser) {
+    const groups = await prisma.historicalLead.groupBy({
+      by: ['eventName'],
+      where: { restoredLeadId: null, ...historicalScope(user) },
+      _count: { _all: true },
+      orderBy: { eventName: 'asc' },
+    });
+    return groups.map((g) => ({ event: g.eventName, count: g._count._all }));
+  },
+
+  // Edit trail for one record, newest first.
+  async leadHistory(user: AuthUser, id: string) {
+    await assertEditable(user, id);
+    return prisma.historicalLeadEdit.findMany({
+      where: { historicalLeadId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: { editedBy: { select: { id: true, firstName: true, lastName: true } } },
+    });
+  },
+
   // Move historical lead(s) back into Lead Management as fresh leads (status NEW).
   // The historical record is kept as the permanent archive; restoredLeadId is
   // updated to point at the most recent lead created from it.
-  async restore(userId: string, input: RestoreHistoricalInput) {
-    const records = await prisma.historicalLead.findMany({ where: { id: { in: input.ids } } });
+  async restore(user: AuthUser, input: RestoreHistoricalInput) {
+    const userId = user.id;
+    // Scoped like the list: a rep can only move back records assigned to them.
+    // Anything outside their scope simply isn't found, and counts as skipped.
+    const records = await prisma.historicalLead.findMany({
+      where: { id: { in: input.ids }, ...historicalScope(user) },
+    });
 
     let restored = 0;
-    let skipped = 0;
+    let skipped = input.ids.length - records.length;
     for (const r of records) {
       if (!(r.company || r.email || r.name || r.mobile)) { skipped += 1; continue; }
       // Restore to the same member it was assigned to. If resolved, the lead is
@@ -298,9 +383,8 @@ export const historicalService = {
     return { restored, skipped, total: input.ids.length };
   },
 
-  async removeLead(id: string) {
-    const record = await prisma.historicalLead.findUnique({ where: { id } });
-    if (!record) throw AppError.notFound('Historical lead not found');
+  async removeLead(user: AuthUser, id: string) {
+    await assertEditable(user, id);
     await prisma.historicalLead.delete({ where: { id } });
     return { deleted: true };
   },
@@ -332,34 +416,69 @@ export const historicalService = {
     });
   },
 
-  // Edit a historical lead. Only the fields present in `input` are changed.
-  async updateLead(id: string, input: UpdateHistoricalLeadInput) {
-    const existing = await prisma.historicalLead.findUnique({ where: { id } });
-    if (!existing) throw AppError.notFound('Historical lead not found');
+  // Edit a historical lead. Only the fields present in `input` are changed, and
+  // every actual change is written to the edit log in the same transaction.
+  async updateLead(user: AuthUser, id: string, input: UpdateHistoricalLeadInput) {
+    const existing = await assertEditable(user, id);
 
     const data: Prisma.HistoricalLeadUncheckedUpdateInput = {};
-    const scalarKeys = [
-      'company', 'name', 'designation', 'email', 'mobile', 'city', 'country',
-      'eventName', 'eventYear', 'industry', 'branchOffice', 'remark', 'specialRemarks', 'spaceSqm',
-    ] as const;
-    for (const k of scalarKeys) {
-      if (input[k] !== undefined) (data as Record<string, unknown>)[k] = input[k];
+    const changes: HistoricalEditChange[] = [];
+
+    for (const [k, label] of Object.entries(AUDITED_FIELDS) as [keyof typeof AUDITED_FIELDS, string][]) {
+      const next = input[k];
+      if (next === undefined) continue;
+      (data as Record<string, unknown>)[k] = next;
+      const from = asText(existing[k]);
+      const to = asText(next);
+      if (from !== to) changes.push({ field: k, label, from, to });
     }
-    if (input.exhHistory !== undefined) data.exhHistory = input.exhHistory as unknown as Prisma.InputJsonValue;
-    if (input.assignedUserId !== undefined) {
-      data.assignedUserId = input.assignedUserId;
-      if (input.assignedUserId) {
-        const u = await prisma.user.findUnique({ where: { id: input.assignedUserId }, select: { firstName: true, lastName: true } });
-        data.assignedTo = u ? `${u.firstName} ${u.lastName}` : null;
-      } else {
-        data.assignedTo = null;
+
+    if (input.exhHistory !== undefined) {
+      data.exhHistory = input.exhHistory as unknown as Prisma.InputJsonValue;
+      const from = JSON.stringify(existing.exhHistory ?? []);
+      const to = JSON.stringify(input.exhHistory);
+      if (from !== to) {
+        // Stored as a compact "year: sqm" summary — the raw JSON reads poorly in a timeline.
+        const summarise = (v: unknown) =>
+          (Array.isArray(v) ? v : [])
+            .map((h) => `${(h as { year: number }).year}: ${(h as { sqm_spo: string }).sqm_spo}`)
+            .join(', ') || null;
+        changes.push({
+          field: 'exhHistory', label: 'Participation history',
+          from: summarise(existing.exhHistory), to: summarise(input.exhHistory),
+        });
       }
     }
 
-    return prisma.historicalLead.update({
-      where: { id },
-      data,
-      include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } },
+    if (input.assignedUserId !== undefined) {
+      data.assignedUserId = input.assignedUserId;
+      let assignedTo: string | null = null;
+      if (input.assignedUserId) {
+        const u = await prisma.user.findUnique({ where: { id: input.assignedUserId }, select: { firstName: true, lastName: true } });
+        assignedTo = u ? `${u.firstName} ${u.lastName}` : null;
+      }
+      data.assignedTo = assignedTo;
+      if (existing.assignedUserId !== input.assignedUserId) {
+        changes.push({ field: 'assignedUserId', label: 'Assigned to', from: existing.assignedTo, to: assignedTo });
+      }
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.historicalLead.update({
+        where: { id },
+        data,
+        include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } },
+      });
+      if (changes.length) {
+        await tx.historicalLeadEdit.create({
+          data: {
+            historicalLeadId: id,
+            editedById: user.id,
+            changes: changes as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+      return updated;
     });
   },
 };

@@ -15,7 +15,6 @@ const rawBaseQuery = fetchBaseQuery({
   },
 });
 
-// Serialize refreshes so a burst of 401s triggers exactly one refresh.
 const mutex = new Mutex();
 
 export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (

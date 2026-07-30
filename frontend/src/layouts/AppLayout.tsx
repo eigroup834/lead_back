@@ -8,7 +8,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import LogoutIcon from '@mui/icons-material/Logout';
-import { NAV_ITEMS } from '@/constants';
+import { NAV_ITEMS, landingPath } from '@/constants';
 import { GRADIENTS } from '@/theme';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAppDispatch, useAppSelector } from '@/store';
@@ -39,7 +39,7 @@ export default function AppLayout() {
   const handleLogout = async () => {
     try { await doLogout().unwrap(); } catch { /* ignore */ }
     dispatch(logout());
-    dispatch(api.util.resetApiState()); // drop the previous user's cached data
+    dispatch(api.util.resetApiState()); 
     navigate('/login');
   };
 
@@ -123,7 +123,7 @@ export default function AppLayout() {
       <Box component="main" sx={{ flexGrow: 1, p: 3, width: `calc(100% - ${width}px)` }}>
         <Toolbar />
         <Breadcrumbs sx={{ mb: 2 }}>
-          <Link component={RouterLink} to="/dashboard" underline="hover" color="inherit">Home</Link>
+          <Link component={RouterLink} to={landingPath(level)} underline="hover" color="inherit">Home</Link>
           {crumbs.map((c, i) => {
             const to = '/' + crumbs.slice(0, i + 1).join('/');
             const label = c.charAt(0).toUpperCase() + c.slice(1);

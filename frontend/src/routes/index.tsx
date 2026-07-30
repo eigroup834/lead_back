@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 import AppLayout from '@/layouts/AppLayout';
+import { landingPath } from '@/constants';
+import { usePermissions } from '@/hooks/usePermissions';
 import { RequireAuth, RequirePermission } from './guards';
 
 // Route-level code splitting.
@@ -24,6 +26,12 @@ const Fallback = () => (
   </Box>
 );
 
+// "/" can't be a fixed redirect any more — the Dashboard is Super Admin only.
+function LandingRedirect() {
+  const { level } = usePermissions();
+  return <Navigate to={landingPath(level)} replace />;
+}
+
 export default function AppRoutes() {
   return (
     <Suspense fallback={<Fallback />}>
@@ -38,8 +46,8 @@ export default function AppRoutes() {
             </RequireAuth>
           }
         >
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<RequirePermission permission="dashboard.view"><DashboardPage /></RequirePermission>} />
+          <Route index element={<LandingRedirect />} />
+          <Route path="dashboard" element={<RequirePermission permission="dashboard.view" maxLevel={1}><DashboardPage /></RequirePermission>} />
           <Route path="leads" element={<RequirePermission permission="lead.view" maxLevel={2}><LeadsPage /></RequirePermission>} />
           <Route path="leads/new" element={<RequirePermission permission="lead.create"><AddLeadPage /></RequirePermission>} />
           <Route path="leads/assigned" element={<RequirePermission permission="lead.view"><LeadsPage assignedOnly /></RequirePermission>} />

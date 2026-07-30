@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   Box, Grid, Card, CardHeader, CardContent, Typography, Stack, Switch, FormControlLabel,
   Button, Table, TableHead, TableRow, TableCell, TableBody, Chip, Divider,
@@ -8,6 +9,16 @@ import { toggleMode } from '@/features/ui/uiSlice';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSyncLogsQuery, useRunSyncMutation } from '@/features/adminApi';
 import { sentenceCase } from '@/constants';
+import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
+
+type SyncLog = { startedAt: string; status: string; fetchedCount: number; insertedCount: number };
+type SyncSortKey = keyof SyncLog;
+const SYNC_SORT_VALUE: Record<SyncSortKey, (l: SyncLog) => string | number> = {
+  startedAt: (l) => l.startedAt,
+  status: (l) => l.status,
+  fetchedCount: (l) => l.fetchedCount,
+  insertedCount: (l) => l.insertedCount,
+};
 
 export default function SettingsPage() {
   const dispatch = useAppDispatch();
@@ -16,6 +27,11 @@ export default function SettingsPage() {
   const canSync = has('lead.sync');
   const { data: logs } = useSyncLogsQuery(undefined, { skip: !canSync, pollingInterval: 10000 });
   const [runSync, { isLoading }] = useRunSyncMutation();
+  const { sort, toggle: toggleSort } = useSort<SyncSortKey>({ by: 'startedAt', dir: 'desc' });
+  const syncRows = useMemo(
+    () => sortRows(logs?.data ?? [], sort.by, sort.dir, SYNC_SORT_VALUE),
+    [logs, sort],
+  );
 
   return (
     <Box>
@@ -56,12 +72,14 @@ export default function SettingsPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Started</TableCell><TableCell>Status</TableCell>
-                      <TableCell align="right">Fetched</TableCell><TableCell align="right">Inserted</TableCell>
+                      <SortableCell field="startedAt" sort={sort} onSort={toggleSort}>Started</SortableCell>
+                      <SortableCell field="status" sort={sort} onSort={toggleSort}>Status</SortableCell>
+                      <SortableCell field="fetchedCount" sort={sort} onSort={toggleSort} align="right">Fetched</SortableCell>
+                      <SortableCell field="insertedCount" sort={sort} onSort={toggleSort} align="right">Inserted</SortableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(logs?.data ?? []).map((l) => (
+                    {syncRows.map((l) => (
                       <TableRow key={l.id}>
                         <TableCell>{new Date(l.startedAt).toLocaleString()}</TableCell>
                         <TableCell><Chip size="small" label={sentenceCase(l.status)} color={l.status === 'SUCCESS' ? 'success' : l.status === 'FAILED' ? 'error' : 'info'} /></TableCell>

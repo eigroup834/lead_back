@@ -17,16 +17,24 @@ import Grid from '@mui/material/Grid';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
-  useListHistoricalLeadsQuery, useRestoreHistoricalLeadsMutation,
-  useUpdateHistoricalLeadMutation, type HistoricalLead, type ExhHistoryEntry,
+  useListHistoricalLeadsQuery, useRestoreHistoricalLeadsMutation, useHistoricalEventsQuery,
+  useHistoricalLeadHistoryQuery, useUpdateHistoricalLeadMutation,
+  type HistoricalLead, type ExhHistoryEntry,
 } from '@/features/historical/historicalApi';
 import { useListUsersQuery } from '@/features/adminApi';
+import { SortableCell, useSort } from '@/components/SortableCell';
+
+const NO_EVENT = '__NO_EVENT__';
+
+type HistoricalSortKey =
+  | 'archivedAt' | 'eventYear' | 'company' | 'name' | 'designation' | 'email'
+  | 'mobile' | 'city' | 'country' | 'remark' | 'assignedUser';
 
 export default function HistoricalPage() {
-  const { has, level } = usePermissions();
-  const canRestore = has('lead.create');
-  const canEdit = level === 1; // editing historical records is Super Admin only
-  const canAssign = level === 1; // only Super Admin sees all + team-member filter
+  const { level } = usePermissions();
+  const canRestore = true;
+  const canEdit = true;
+  const canAssign = level === 1; 
 
   const EDIT_FIELDS = [
     'company', 'name', 'designation', 'email', 'mobile', 'city', 'country',
@@ -39,9 +47,10 @@ export default function HistoricalPage() {
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
   const [assignee, setAssignee] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  // '' = all events, NO_EVENT = archived without an event name, else the name.
+  const [eventName, setEventName] = useState('');
   const [page, setPage] = useState(0);
+  const { sort, toggle: toggleSort } = useSort<HistoricalSortKey>({ by: 'eventYear', dir: 'desc' }, () => setPage(0));
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [restoreConfirm, setRestoreConfirm] = useState<{ ids: string[]; label: string } | null>(null);
@@ -54,11 +63,13 @@ export default function HistoricalPage() {
   const { data, isFetching } = useListHistoricalLeadsQuery({
     page: page + 1, limit: rowsPerPage, q: debounced || undefined,
     assigneeId: assignee || undefined,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
+    eventName: eventName && eventName !== NO_EVENT ? eventName : undefined,
+    noEventName: eventName === NO_EVENT || undefined,
+    sortBy: sort.by, sortDir: sort.dir,
   });
-  // Members are needed both for the team-member filter (admin) and the edit assignee dropdown.
-  const { data: users } = useListUsersQuery(undefined, { skip: !canAssign && !canEdit });
+  const { data: events } = useHistoricalEventsQuery();
+  
+  const { data: users } = useListUsersQuery({ limit: 100 }, { skip: !canAssign });
   const members = [...(users?.data ?? [])]
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
   const [restore, { isLoading: restoring }] = useRestoreHistoricalLeadsMutation();
@@ -66,6 +77,8 @@ export default function HistoricalPage() {
 
   const rows = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
+  // With a filter on, an empty result means "nothing matched", not "no data yet".
+  const anyFilter = Boolean(debounced || assignee || eventName);
   const selectedIds = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected]);
   const canSelect = canRestore;
 
@@ -139,6 +152,17 @@ export default function HistoricalPage() {
             sx={{ minWidth: 220, flex: '1 1 220px', maxWidth: 320 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
           />
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Event</InputLabel>
+            <Select label="Event" value={eventName} onChange={(e) => { setEventName(e.target.value); setPage(0); }}>
+              <MenuItem value="">All events</MenuItem>
+              {(events?.data ?? []).map((e) => (
+                <MenuItem key={e.event ?? NO_EVENT} value={e.event ?? NO_EVENT}>
+                  {e.event ?? '(No event name)'} ({e.count})
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           {canAssign && (
             <FormControl size="small" sx={{ minWidth: 170 }}>
               <InputLabel>Team member</InputLabel>
@@ -148,14 +172,6 @@ export default function HistoricalPage() {
               </Select>
             </FormControl>
           )}
-          <TextField
-            size="small" type="date" label="From" InputLabelProps={{ shrink: true }} sx={{ width: 150 }}
-            value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
-          />
-          <TextField
-            size="small" type="date" label="To" InputLabelProps={{ shrink: true }} sx={{ width: 150 }}
-            value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
-          />
           <Box sx={{ flex: 1 }} />
           {canRestore && selectedIds.length > 0 && (
             <Button
@@ -172,7 +188,7 @@ export default function HistoricalPage() {
         </Toolbar>
         <Divider />
 
-        {!isFetching && rows.length === 0 && total === 0 && !debounced && (
+        {!isFetching && rows.length === 0 && total === 0 && !anyFilter && (
           <Box sx={{ textAlign: 'center', py: 8 }}>
             <HistoryEduIcon sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
             <Typography variant="h6" gutterBottom>No historical data yet</Typography>
@@ -182,7 +198,7 @@ export default function HistoricalPage() {
           </Box>
         )}
 
-        {(rows.length > 0 || debounced) && (
+        {(rows.length > 0 || anyFilter) && (
           <TableContainer>
             <Table stickyHeader size="small">
               <TableHead>
@@ -200,15 +216,15 @@ export default function HistoricalPage() {
                       />
                     </TableCell>
                   )}
-                  <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Contact</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Designation</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Mobile</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>City</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Country</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Remark</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Assigned to</TableCell>
+                  <SortableCell field="company" sort={sort} onSort={toggleSort}>Company</SortableCell>
+                  <SortableCell field="name" sort={sort} onSort={toggleSort}>Contact</SortableCell>
+                  <SortableCell field="designation" sort={sort} onSort={toggleSort}>Designation</SortableCell>
+                  <SortableCell field="email" sort={sort} onSort={toggleSort}>Email</SortableCell>
+                  <SortableCell field="mobile" sort={sort} onSort={toggleSort}>Mobile</SortableCell>
+                  <SortableCell field="city" sort={sort} onSort={toggleSort}>City</SortableCell>
+                  <SortableCell field="country" sort={sort} onSort={toggleSort}>Country</SortableCell>
+                  <SortableCell field="remark" sort={sort} onSort={toggleSort}>Remark</SortableCell>
+                  <SortableCell field="assignedUser" sort={sort} onSort={toggleSort}>Assigned to</SortableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>
                 </TableRow>
               </TableHead>
@@ -323,6 +339,9 @@ export default function HistoricalPage() {
                   </TableBody>
                 </Table>
               ) : <Typography variant="body2" color="text.secondary">No participation history</Typography>}
+              <Divider />
+              <Typography variant="subtitle2">Edit history</Typography>
+              <EditHistory leadId={detail.id} />
             </Stack>
           )}
         </DialogContent>
@@ -414,6 +433,37 @@ export default function HistoricalPage() {
         {toast ? <Alert severity={toast.sev} onClose={() => setToast(null)}>{toast.msg}</Alert> : undefined}
       </Snackbar>
     </Box>
+  );
+}
+
+// Who changed what, and when. Fetched on demand when the details dialog opens.
+function EditHistory({ leadId }: { leadId: string }) {
+  const { data, isFetching } = useHistoricalLeadHistoryQuery(leadId);
+  const edits = data?.data ?? [];
+
+  if (isFetching && !data) return <CircularProgress size={18} />;
+  if (!edits.length) return <Typography variant="body2" color="text.secondary">No edits recorded yet</Typography>;
+
+  return (
+    <Stack spacing={1.5}>
+      {edits.map((e) => (
+        <Box key={e.id} sx={{ borderLeft: 2, borderColor: 'divider', pl: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            {e.editedBy ? `${e.editedBy.firstName} ${e.editedBy.lastName}` : 'Unknown user'}
+            {' · '}
+            {new Date(e.createdAt).toLocaleString()}
+          </Typography>
+          {e.changes.map((c) => (
+            <Typography key={c.field} variant="body2" sx={{ display: 'block' }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>{c.label}: </Box>
+              <Box component="span" sx={{ color: 'text.secondary', textDecoration: 'line-through' }}>{c.from ?? '—'}</Box>
+              {' → '}
+              <Box component="span">{c.to ?? '—'}</Box>
+            </Typography>
+          ))}
+        </Box>
+      ))}
+    </Stack>
   );
 }
 

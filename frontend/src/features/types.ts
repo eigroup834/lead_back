@@ -24,6 +24,9 @@ export interface Lead {
   leadType?: string | null;
   assignedUserId: string | null;
   assignedUser?: { id: string; firstName: string; lastName: string } | null;
+  // Space enquired about — captured by the space-booking flow only.
+  shellSpace: string | null;
+  rawSpace: string | null;
   createDate: string | null;
   createdAt: string;
 }

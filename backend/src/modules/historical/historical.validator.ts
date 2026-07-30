@@ -85,14 +85,27 @@ export const uploadRowParams = z.object({ id: z.string().uuid(), rowId: z.string
 
 // -------- Historical leads (year-tagged archive of converted leads) --------
 
+// Columns the archive table can be sorted by. 'assignedUser' sorts through the
+// relation (see HISTORICAL_RELATION_SORTS in historical.service).
+export const HISTORICAL_SORTABLE = [
+  'archivedAt', 'eventYear', 'company', 'name', 'designation', 'email', 'mobile',
+  'city', 'country', 'remark', 'assignedUser',
+] as const;
+
 export const listHistoricalLeadsQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   q: z.string().trim().max(120).optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
   assigneeId: z.string().uuid().optional(), // managers: filter by team member
+  eventName: z.string().trim().max(200).optional(),
+  // Event filter's "(No event name)" option — archived leads whose source lead
+  // carried no event name. Separate flag so it can't collide with a real name.
+  noEventName: z.coerce.boolean().optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
+  sortBy: z.enum(HISTORICAL_SORTABLE).default('eventYear'),
+  sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
 export type ListHistoricalLeadsQuery = z.infer<typeof listHistoricalLeadsQuery>;
 

@@ -15,7 +15,7 @@ export interface AuthUser {
 interface AuthState {
   accessToken: string | null;
   user: AuthUser | null;
-  initialized: boolean; // silent-refresh attempt finished
+  initialized: boolean; 
 }
 
 const initialState: AuthState = { accessToken: null, user: null, initialized: false };

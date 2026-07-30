@@ -8,13 +8,17 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EditIcon from '@mui/icons-material/Edit';
+import BlockIcon from '@mui/icons-material/Block';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useListUsersQuery, useCreateUserMutation, useUpdateUserMutation, useListRolesQuery, useLazyGetCredentialQuery, type UserRow } from '@/features/adminApi';
 import { usePermissions } from '@/hooks/usePermissions';
 import { sentenceCase } from '@/constants';
+import { SortableCell, useSort } from '@/components/SortableCell';
+
+type UserSortKey = 'firstName' | 'email' | 'phone' | 'status' | 'lastLoginAt' | 'createdAt';
 
 const empty = { email: '', phone: '', password: '', firstName: '', lastName: '', roleId: '' };
 
-// Surface the real server error instead of a one-size-fits-all message.
 function createErrorMessage(error: unknown): string {
   const data = (error as { data?: { error?: { message?: string; details?: { fieldErrors?: Record<string, string[]> } } } })?.data;
   const e = data?.error;
@@ -28,32 +32,57 @@ function createErrorMessage(error: unknown): string {
 }
 
 export default function UsersPage() {
-  const { has, level } = usePermissions();
+  const { has, level, user } = usePermissions();
   const isSuperAdmin = level === 1;
-  const { data, isFetching } = useListUsersQuery();
-  const { data: roles } = useListRolesQuery(undefined, { skip: !has('user.create') });
+  const { sort, toggle: toggleSort } = useSort<UserSortKey>({ by: 'createdAt', dir: 'desc' });
+  const { data, isFetching } = useListUsersQuery({ sortBy: sort.by, sortDir: sort.dir });
+  // Needed by both the create and edit role pickers.
+  const { data: roles } = useListRolesQuery(undefined, { skip: !has('user.create') && !has('user.update') });
   const [createUser, { isLoading, error }] = useCreateUserMutation();
   const [updateUser, { isLoading: isSaving, error: editError }] = useUpdateUserMutation();
   const [fetchCredential] = useLazyGetCredentialQuery();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [editUser, setEditUser] = useState<UserRow | null>(null);
-  const [editForm, setEditForm] = useState({ email: '', phone: '', firstName: '', lastName: '' });
+  const [editForm, setEditForm] = useState({ email: '', phone: '', firstName: '', lastName: '', roleId: '' });
   const [reveal, setReveal] = useState<{ name: string; password: string | null } | null>(null);
+  const [statusTarget, setStatusTarget] = useState<UserRow | null>(null);
 
   const users = data?.data ?? [];
   const canEdit = has('user.update');
   const colCount = 6 + (canEdit ? 1 : 0) + (isSuperAdmin ? 1 : 0);
+  // Mirrors the API guard: you can't hand out a role that outranks your own.
+  const assignableRoles = (roles?.data ?? []).filter((r) => r.level >= level);
 
   const openEdit = (u: UserRow) => {
     setEditUser(u);
-    setEditForm({ email: u.email, phone: u.phone ?? '', firstName: u.firstName, lastName: u.lastName });
+    setEditForm({
+      email: u.email, phone: u.phone ?? '', firstName: u.firstName, lastName: u.lastName,
+      roleId: u.roles[0]?.role.id ?? '',
+    });
   };
   const setEdit = (k: keyof typeof editForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }));
   const saveEdit = async () => {
     if (!editUser) return;
-    await updateUser({ id: editUser.id, ...editForm, phone: editForm.phone || null }).unwrap();
+    const { roleId, ...rest } = editForm;
+    await updateUser({
+      id: editUser.id, ...rest, phone: rest.phone || null,
+      // Only send roles when actually changed — the API rejects self-edits and
+      // any role that outranks the caller.
+      roleIds: roleId && roleId !== editUser.roles[0]?.role.id ? [roleId] : undefined,
+    }).unwrap();
     setEditUser(null);
+  };
+
+  // Deactivate / reactivate — Super Admin only, confirmed first.
+  const toggleStatus = async () => {
+    if (!statusTarget) return;
+    const next = statusTarget.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      await updateUser({ id: statusTarget.id, status: next }).unwrap();
+    } finally {
+      setStatusTarget(null);
+    }
   };
 
   const revealPassword = async (id: string, name: string) => {
@@ -81,10 +110,15 @@ export default function UsersPage() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Name</TableCell><TableCell>Email</TableCell><TableCell>Phone</TableCell><TableCell>Roles</TableCell>
-              <TableCell>Status</TableCell><TableCell>Last Login</TableCell>
-              {isSuperAdmin && <TableCell align="center">Password</TableCell>}
-              {canEdit && <TableCell align="center">Actions</TableCell>}
+              <SortableCell field="firstName" sort={sort} onSort={toggleSort}>Name</SortableCell>
+              <SortableCell field="email" sort={sort} onSort={toggleSort}>Email</SortableCell>
+              <SortableCell field="phone" sort={sort} onSort={toggleSort}>Phone</SortableCell>
+              {/* Roles is many-to-many — no meaningful column order. */}
+              <TableCell sx={{ fontWeight: 700 }}>Roles</TableCell>
+              <SortableCell field="status" sort={sort} onSort={toggleSort}>Status</SortableCell>
+              <SortableCell field="lastLoginAt" sort={sort} onSort={toggleSort}>Last Login</SortableCell>
+              {isSuperAdmin && <TableCell align="center" sx={{ fontWeight: 700 }}>Password</TableCell>}
+              {canEdit && <TableCell align="center" sx={{ fontWeight: 700 }}>Actions</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -108,6 +142,16 @@ export default function UsersPage() {
                     <Tooltip title="Edit user">
                       <IconButton size="small" onClick={() => openEdit(u)}><EditIcon fontSize="small" /></IconButton>
                     </Tooltip>
+                    {/* Deactivating an account is Super Admin only, and never your own. */}
+                    {isSuperAdmin && u.id !== user?.id && (
+                      <Tooltip title={u.status === 'ACTIVE' ? 'Deactivate user' : 'Reactivate user'}>
+                        <IconButton size="small" onClick={() => setStatusTarget(u)}>
+                          {u.status === 'ACTIVE'
+                            ? <BlockIcon fontSize="small" color="error" />
+                            : <CheckCircleIcon fontSize="small" color="success" />}
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </TableCell>
                 )}
               </TableRow>
@@ -134,7 +178,7 @@ export default function UsersPage() {
             <FormControl fullWidth>
               <InputLabel>Role</InputLabel>
               <Select label="Role" value={form.roleId} onChange={set('roleId')}>
-                {(roles?.data ?? []).map((r) => <MenuItem key={r.id} value={r.id}>{r.label}</MenuItem>)}
+                {assignableRoles.map((r) => <MenuItem key={r.id} value={r.id}>{r.label}</MenuItem>)}
               </Select>
             </FormControl>
           </Stack>
@@ -157,11 +201,45 @@ export default function UsersPage() {
             </Stack>
             <TextField label="Email" type="email" fullWidth value={editForm.email} onChange={setEdit('email')} />
             <TextField label="Phone" type="tel" fullWidth value={editForm.phone} onChange={setEdit('phone')} helperText="Optional — used for follow-up reminders" />
+            <FormControl fullWidth>
+              <InputLabel>Role</InputLabel>
+              <Select label="Role" value={editForm.roleId} onChange={setEdit('roleId')}>
+                {assignableRoles.map((r) => <MenuItem key={r.id} value={r.id}>{r.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+            {editUser?.id === user?.id && (
+              <Alert severity="info">You can't change your own role.</Alert>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditUser(null)}>Cancel</Button>
           <Button variant="contained" disabled={isSaving || !editForm.email} onClick={saveEdit}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Deactivate / reactivate confirmation */}
+      <Dialog open={!!statusTarget} onClose={() => setStatusTarget(null)} fullWidth maxWidth="xs">
+        <DialogTitle>
+          {statusTarget?.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'} {statusTarget?.firstName} {statusTarget?.lastName}?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {statusTarget?.status === 'ACTIVE'
+              ? 'They will no longer be able to sign in. Their leads, follow-ups and history stay exactly as they are, and you can reactivate them at any time.'
+              : 'They will be able to sign in again with their existing password.'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStatusTarget(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color={statusTarget?.status === 'ACTIVE' ? 'error' : 'primary'}
+            disabled={isSaving}
+            onClick={toggleStatus}
+          >
+            {statusTarget?.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
+          </Button>
         </DialogActions>
       </Dialog>
 

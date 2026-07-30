@@ -1,9 +1,21 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@config/prisma';
+import { env } from '@config/env';
 import { cache } from '@services/cache.service';
 import { AppError } from '@utils/AppError';
 import type { AuthUser } from '@/types';
 import { leadsRepository } from './leads.repository';
-import type { CreateLeadInput, ListLeadsQuery, UpdateLeadInput } from './leads.validator';
+import { bulkImportRow } from './leads.validator';
+import type {
+  BulkImportInput, BulkImportRow, CreateLeadInput, HistoricalMatchInput, ListLeadsQuery, UpdateLeadInput,
+} from './leads.validator';
+
+// One lead's company and the archived records it resembles.
+export interface HistoricalMatch {
+  leadId: string;
+  company: string;
+  matches: Array<{ id: string; company: string | null; eventYear: number | null; assignedTo: string | null; score: number }>;
+}
 import type { LeadStatus, ExternalLeadCategory } from '@prisma/client';
 
 // Lead types that are NOT exhibitor leads — routed to the ExternalLead table.
@@ -55,6 +67,160 @@ export const leadsService = {
     });
     await bustDashboard();
     return { external: false as const, record: lead };
+  },
+
+  // Bulk import from a spreadsheet. Every row is validated on its own so a single
+  // bad line reports back with its spreadsheet row number instead of failing the
+  // whole file. Imported leads are always exhibitor leads and start as New.
+  async bulkImport(userId: string, input: BulkImportInput) {
+    const valid: BulkImportRow[] = [];
+    const errors: Array<{ row: number; message: string }> = [];
+
+    input.rows.forEach((raw, i) => {
+      const parsed = bulkImportRow.safeParse(raw);
+      // Fall back to the array position when the row number itself is unusable.
+      const rowNo = parsed.success ? parsed.data.row : Number((raw as { row?: unknown })?.row) || i + 2;
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        errors.push({ row: rowNo, message: `${issue.path.filter((p) => p !== 'row').join('.') || 'row'}: ${issue.message}` });
+        return;
+      }
+      const r = parsed.data;
+      if (!(r.company || r.email || r.firstName || r.mobile)) {
+        errors.push({ row: rowNo, message: 'Needs at least a company, name, email or mobile' });
+        return;
+      }
+      if (r.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)) {
+        errors.push({ row: rowNo, message: `Invalid email "${r.email}"` });
+        return;
+      }
+      valid.push(r);
+    });
+
+    // Duplicates: first against rows earlier in this same file, then against
+    // leads already in the system. Matching is on email or mobile.
+    const toCreate: BulkImportRow[] = [];
+    if (input.skipDuplicates) {
+      const emails = valid.map((r) => r.email?.toLowerCase()).filter(Boolean) as string[];
+      const mobiles = valid.map((r) => r.mobile).filter(Boolean) as string[];
+      const existing = await prisma.lead.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            ...(emails.length ? [{ email: { in: emails, mode: 'insensitive' as const } }] : []),
+            ...(mobiles.length ? [{ mobile: { in: mobiles } }] : []),
+          ],
+        },
+        select: { email: true, mobile: true },
+      });
+      const seenEmail = new Set(existing.map((l) => l.email?.toLowerCase()).filter(Boolean) as string[]);
+      const seenMobile = new Set(existing.map((l) => l.mobile).filter(Boolean) as string[]);
+
+      for (const r of valid) {
+        const email = r.email?.toLowerCase();
+        const dupEmail = email && seenEmail.has(email);
+        const dupMobile = r.mobile && seenMobile.has(r.mobile);
+        if (dupEmail || dupMobile) {
+          errors.push({ row: r.row, message: `Skipped — ${dupEmail ? `email "${r.email}"` : `mobile "${r.mobile}"`} already exists` });
+          continue;
+        }
+        if (email) seenEmail.add(email);
+        if (r.mobile) seenMobile.add(r.mobile);
+        toCreate.push(r);
+      }
+    } else {
+      toCreate.push(...valid);
+    }
+
+    let created = 0;
+    for (const r of toCreate) {
+      const { row, email, source, ...rest } = r;
+      try {
+        await prisma.$transaction(async (tx) => {
+          const lead = await tx.lead.create({
+            data: {
+              ...rest,
+              email: email || null,
+              source: source ?? 'MANUAL',
+              leadType: 'EXHIBITION',
+              status: input.assignToId ? 'ASSIGNED' : 'NEW',
+              assignedUserId: input.assignToId ?? null,
+              assignedAt: input.assignToId ? new Date() : null,
+            },
+          });
+          if (input.assignToId) {
+            await tx.leadAssignment.create({
+              data: { leadId: lead.id, assignedToId: input.assignToId, assignedById: userId, type: 'BULK' },
+            });
+          }
+        });
+        created += 1;
+      } catch {
+        errors.push({ row, message: 'Could not be saved' });
+      }
+    }
+
+    if (created > 0) await bustDashboard();
+    // Errors are row-ordered so the UI can show them against the spreadsheet.
+    errors.sort((a, b) => a.row - b.row);
+    return { created, failed: errors.length, total: input.rows.length, errors };
+  },
+
+  // Which of these leads already appear in Historical Data, by company name?
+  // Trigram similarity (pg_trgm) at or above HISTORICAL_MATCH_THRESHOLD — an
+  // equality check would miss "Acme Exhibits Ltd" vs "Acme Exhibits Ltd.".
+  // Only leads with at least one match come back.
+  async historicalMatches(input: HistoricalMatchInput) {
+    const leads = await prisma.lead.findMany({
+      where: { id: { in: input.leadIds }, deletedAt: null, NOT: { company: null } },
+      select: { id: true, company: true },
+    });
+    const named = leads.filter((l) => (l.company ?? '').trim().length >= 3);
+    if (!named.length) return { threshold: env.HISTORICAL_MATCH_THRESHOLD, matches: [] };
+
+    // One batched query rather than one per lead: bulk assigns can carry hundreds
+    // of leads, and a per-lead round trip would take seconds on the assign dialog.
+    //
+    // The join must use the `%` operator, not `similarity(...) >= x`: only `%`
+    // can use the GIN trigram index, and it reads its cutoff from the session's
+    // pg_trgm.similarity_threshold. The function form falls back to a sequential
+    // scan per lead (measured ~46x slower over this archive).
+    const pairs = Prisma.join(named.map((l) => Prisma.sql`(${l.id}::uuid, ${l.company as string})`));
+    const rows = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_limit(${env.HISTORICAL_MATCH_THRESHOLD}::real)`;
+      return tx.$queryRaw<Array<{
+        leadId: string; id: string; company: string | null;
+        eventYear: number | null; assignedTo: string | null; score: number;
+      }>>`
+        SELECT x."lead_id" AS "leadId",
+               h."id",
+               h."company",
+               h."event_year"  AS "eventYear",
+               h."assigned_to" AS "assignedTo",
+               similarity(h."company", x."company") AS "score"
+        FROM (VALUES ${pairs}) AS x("lead_id", "company")
+        JOIN "historical_leads" h ON h."company" % x."company"
+        ORDER BY x."lead_id", "score" DESC
+        LIMIT 2000
+      `;
+    });
+
+    // Group by lead, keeping the closest few matches each.
+    const byLead = new Map<string, HistoricalMatch>();
+    for (const r of rows) {
+      const lead = named.find((l) => l.id === r.leadId);
+      if (!lead) continue;
+      const entry = byLead.get(r.leadId)
+        ?? { leadId: r.leadId, company: lead.company as string, matches: [] };
+      if (entry.matches.length < 5) {
+        entry.matches.push({
+          id: r.id, company: r.company, eventYear: r.eventYear,
+          assignedTo: r.assignedTo, score: Number(r.score),
+        });
+      }
+      byLead.set(r.leadId, entry);
+    }
+    return { threshold: env.HISTORICAL_MATCH_THRESHOLD, matches: [...byLead.values()] };
   },
 
   async get(id: string) {

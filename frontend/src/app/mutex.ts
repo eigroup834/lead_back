@@ -1,4 +1,3 @@
-// Tiny async mutex used to serialize token refreshes.
 export class Mutex {
   private locked = false;
   private waiters: Array<() => void> = [];

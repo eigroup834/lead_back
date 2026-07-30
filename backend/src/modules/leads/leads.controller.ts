@@ -17,6 +17,7 @@ const EXPORT_COLUMNS = [
   { header: 'State', key: 'state', width: 14 },
   { header: 'Country', key: 'country', width: 14 },
   { header: 'Event', key: 'eventName', width: 24 },
+  { header: 'Shell Space', key: 'shellSpace', width: 14 },
   { header: 'Source', key: 'source', width: 14 },
   { header: 'Lead Type', key: 'leadType', width: 14 },
   { header: 'Status', key: 'status', width: 14 },
@@ -93,6 +94,16 @@ export const leadsController = {
   async convertExternal(req: Request, res: Response) {
     const record = await leadsService.convertToExternal(req.params.id, req.body.type);
     return ok(res, record, { external: true });
+  },
+
+  async historicalMatches(req: Request, res: Response) {
+    const result = await leadsService.historicalMatches(req.body);
+    return ok(res, result);
+  },
+
+  async bulkImport(req: Request, res: Response) {
+    const result = await leadsService.bulkImport(req.user!.id, req.body);
+    return ok(res, result);
   },
 
   async archiveHistorical(req: Request, res: Response) {

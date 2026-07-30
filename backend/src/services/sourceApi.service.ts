@@ -118,12 +118,15 @@ function normalizeRow(raw: unknown): SourceRow {
   } as SourceRow;
 }
 
-// Same coercion for download rows (id number, create_date ISO string -> Date).
+// Same coercion for download rows. Both date columns are coerced: download_reg
+// keeps its timestamp in `date` and leaves `create_date` null.
 function normalizeDownloadRow(raw: unknown): DownloadSourceRow {
   const r = raw as Record<string, unknown>;
+  const toDate = (v: unknown) => (v ? new Date(v as string) : null);
   return {
     ...(r as object),
     id: Number(r.id),
-    create_date: r.create_date ? new Date(r.create_date as string) : null,
+    date: toDate(r.date),
+    create_date: toDate(r.create_date),
   } as DownloadSourceRow;
 }

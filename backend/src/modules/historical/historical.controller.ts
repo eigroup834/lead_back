@@ -60,13 +60,23 @@ export const historicalController = {
     return ok(res, years);
   },
 
+  async events(req: Request, res: Response) {
+    const events = await historicalService.events(req.user!);
+    return ok(res, events);
+  },
+
+  async leadHistory(req: Request, res: Response) {
+    const edits = await historicalService.leadHistory(req.user!, req.params.id);
+    return ok(res, edits);
+  },
+
   async restore(req: Request, res: Response) {
-    const result = await historicalService.restore(req.user!.id, req.body);
+    const result = await historicalService.restore(req.user!, req.body);
     return ok(res, result);
   },
 
   async removeLead(req: Request, res: Response) {
-    const result = await historicalService.removeLead(req.params.id);
+    const result = await historicalService.removeLead(req.user!, req.params.id);
     return ok(res, result);
   },
 
@@ -76,7 +86,7 @@ export const historicalController = {
   },
 
   async updateLead(req: Request, res: Response) {
-    const lead = await historicalService.updateLead(req.params.id, req.body);
+    const lead = await historicalService.updateLead(req.user!, req.params.id, req.body);
     return ok(res, lead);
   },
 };

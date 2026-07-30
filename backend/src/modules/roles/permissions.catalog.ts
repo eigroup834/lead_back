@@ -38,9 +38,19 @@ export const ROLES = [
   { name: 'HEAD', label: 'Head', level: 2 },
   // Kept internal name SALES_EXECUTIVE for stable references; label shown as Group Manager.
   { name: 'SALES_EXECUTIVE', label: 'Group Manager', level: 4 },
+  // Same responsibilities and hierarchy level as Group Manager — a separate role
+  // so the two can be told apart on a user, and their permissions diverge later
+  // without touching the other.
+  { name: 'EXECUTIVE', label: 'Executive', level: 4 },
 ] as const;
 
 const ALL = PERMISSIONS.map((p) => p.key);
+
+// Field-sales permission set, shared by Group Manager and Executive.
+const FIELD_SALES: PermissionKey[] = [
+  'lead.view', 'lead.edit', 'lead.note', 'lead.followup', 'dashboard.view',
+  'historical.view', 'historical.manage',
+];
 
 // Default matrix (seed only — editable at runtime).
 export const ROLE_MATRIX: Record<string, PermissionKey[] | '*'> = {
@@ -51,10 +61,8 @@ export const ROLE_MATRIX: Record<string, PermissionKey[] | '*'> = {
     'user.view', 'user.create', 'user.update',
     'dashboard.view', 'analytics.view', 'report.export',
   ],
-  SALES_EXECUTIVE: [
-    'lead.view', 'lead.edit', 'lead.note', 'lead.followup', 'dashboard.view',
-    'historical.view', 'historical.manage',
-  ],
+  SALES_EXECUTIVE: FIELD_SALES,
+  EXECUTIVE: FIELD_SALES,
 };
 
 export function resolveMatrix(roleName: string): PermissionKey[] {

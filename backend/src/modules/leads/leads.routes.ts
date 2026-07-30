@@ -7,7 +7,7 @@ import { asyncHandler } from '@utils/asyncHandler';
 import { leadsController } from './leads.controller';
 import { assignmentController } from '@modules/assignments/assignment.controller';
 import { assignBulkSchema, assignSingleSchema, autoAssignSchema } from '@modules/assignments/assignment.validator';
-import { archiveHistoricalSchema, changeStatusSchema, convertExternalSchema, createLeadSchema, idParam, listLeadsQuery, updateLeadSchema } from './leads.validator';
+import { archiveHistoricalSchema, bulkImportSchema, changeStatusSchema, convertExternalSchema, createLeadSchema, historicalMatchSchema, idParam, listLeadsQuery, updateLeadSchema } from './leads.validator';
 
 const router = Router();
 router.use(authenticate);
@@ -17,12 +17,17 @@ router.post('/assign', requirePermission('lead.assign'), validate({ body: assign
 router.post('/assign/bulk', requirePermission('lead.assign'), validate({ body: assignBulkSchema }), asyncHandler(assignmentController.bulk));
 router.post('/assign/auto', requirePermission('lead.assign'), validate({ body: autoAssignSchema }), asyncHandler(assignmentController.auto));
 
+// Pre-assignment duplicate check against Historical Data (drives the warning popup).
+router.post('/historical-matches', requirePermission('lead.view'), validate({ body: historicalMatchSchema }), asyncHandler(leadsController.historicalMatches));
+
 // Archive converted leads into the year-tagged Historical store.
 router.post('/archive-historical', requirePermission('lead.edit'), validate({ body: archiveHistoricalSchema }), asyncHandler(leadsController.archiveHistorical));
 
 // Lead CRUD / detail
 router.get('/', requirePermission('lead.view'), validate({ query: listLeadsQuery }), asyncHandler(leadsController.list));
 router.post('/', requirePermission('lead.create'), validate({ body: createLeadSchema }), asyncHandler(leadsController.create));
+// Bulk import from a spreadsheet — declared before /:id so the path isn't eaten by it.
+router.post('/bulk', requirePermission('lead.create'), validate({ body: bulkImportSchema }), asyncHandler(leadsController.bulkImport));
 router.get('/export', requirePermission('lead.export'), validate({ query: listLeadsQuery }), asyncHandler(leadsController.exportXlsx));
 router.get('/:id', requirePermission('lead.view'), validate({ params: idParam }), asyncHandler(leadsController.get));
 router.patch('/:id', requirePermission('lead.edit'), validate({ params: idParam, body: updateLeadSchema }), asyncHandler(leadsController.update));

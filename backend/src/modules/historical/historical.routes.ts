@@ -26,8 +26,13 @@ router.use(authenticate);
 router.get('/leads', requirePermission('historical.view'), validate({ query: listHistoricalLeadsQuery }), asyncHandler(historicalController.listLeads));
 router.post('/leads', requirePermission('lead.create'), validate({ body: createHistoricalLeadSchema }), asyncHandler(historicalController.createLead));
 router.get('/leads/years', requirePermission('historical.view'), asyncHandler(historicalController.years));
-router.post('/leads/restore', requirePermission('lead.create'), validate({ body: restoreHistoricalSchema }), asyncHandler(historicalController.restore));
-router.patch('/leads/:id', requirePermission('lead.edit'), validate({ params: idParam, body: updateHistoricalLeadSchema }), asyncHandler(historicalController.updateLead));
+router.get('/leads/events', requirePermission('historical.view'), asyncHandler(historicalController.events));
+// Editing and moving back to Lead Management are open to anyone who can see the
+// archive; the service scopes each call to the records that user can see, and
+// records every edit in historical_lead_edits.
+router.post('/leads/restore', requirePermission('historical.view'), validate({ body: restoreHistoricalSchema }), asyncHandler(historicalController.restore));
+router.get('/leads/:id/history', requirePermission('historical.view'), validate({ params: idParam }), asyncHandler(historicalController.leadHistory));
+router.patch('/leads/:id', requirePermission('historical.view'), validate({ params: idParam, body: updateHistoricalLeadSchema }), asyncHandler(historicalController.updateLead));
 router.delete('/leads/:id', requirePermission('lead.edit'), validate({ params: idParam }), asyncHandler(historicalController.removeLead));
 
 // All endpoints are owner-scoped inside the service (a rep only ever sees/edits

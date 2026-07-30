@@ -23,9 +23,8 @@ export default function LeadDetailsPage() {
   const navigate = useNavigate();
   const { has, level } = usePermissions();
   const canAssign = has('lead.assign');
-  const isSuperAdmin = level === 1; // reassign is Super Admin only
-  // Always pull the lead fresh when the page opens — avoids showing a stale
-  // (e.g. not-yet-assigned) copy left in cache from a previous view.
+  const isSuperAdmin = level === 1; 
+
   const { data, isLoading } = useGetLeadQuery(id, { refetchOnMountOrArgChange: true });
   const { data: users } = useListUsersQuery(undefined, { skip: !canAssign });
   const [changeStatus, { isLoading: changing }] = useChangeStatusMutation();
@@ -287,7 +286,9 @@ export default function LeadDetailsPage() {
               try {
                 await convertExternal({ id, type: convertType }).unwrap();
                 setToast(`Moved to ${prettyLabel(convertType)} (external) list`);
-                setTimeout(() => navigate('/leads'), 800);
+                // This page is only reachable from Assigned Leads, so go back
+                // there. Lead Management is levels 1–2 only and would 403.
+                setTimeout(() => navigate('/leads/assigned'), 800);
               } catch {
                 setToast('Conversion failed');
               } finally {

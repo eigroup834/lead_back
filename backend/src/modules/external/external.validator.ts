@@ -2,12 +2,19 @@ import { z } from 'zod';
 
 export const EXTERNAL_CATEGORIES = ['VISITOR', 'DELEGATE', 'SPEAKER', 'OTHER'] as const;
 
+// Columns the brochure table can be sorted by. 'assignedUser' sorts through the
+// relation (see EXTERNAL_RELATION_SORTS in external.service).
+export const EXTERNAL_SORTABLE = [
+  'createdAt', 'createDate', 'company', 'category', 'email', 'mobile',
+  'designation', 'eventName', 'assignedUser',
+] as const;
+
 export const listExternalQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   q: z.string().trim().max(120).optional(),
   category: z.enum(EXTERNAL_CATEGORIES).optional(),
-  sortBy: z.enum(['createdAt', 'createDate', 'company', 'category']).default('createdAt'),
+  sortBy: z.enum(EXTERNAL_SORTABLE).default('createdAt'),
   sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
 export type ListExternalQuery = z.infer<typeof listExternalQuery>;

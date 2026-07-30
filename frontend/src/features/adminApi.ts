@@ -66,7 +66,9 @@ export const adminApi = api.injectEndpoints({
       invalidatesTags: ['Followup'],
     }),
     // users
-    listUsers: build.query<ApiEnvelope<UserRow[]>, { q?: string; page?: number } | void>({
+    listUsers: build.query<ApiEnvelope<UserRow[]>, {
+      q?: string; page?: number; limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc';
+    } | void>({
       query: (params) => ({ url: '/users', params: params || {} }),
       providesTags: ['User'],
     }),
@@ -87,9 +89,10 @@ export const adminApi = api.injectEndpoints({
       query: (body) => ({ url: '/users', method: 'POST', body }),
       invalidatesTags: ['User'],
     }),
-    // update user (contact details + name)
+    // update user (contact details, name, role, and — Super Admin only — status)
     updateUser: build.mutation<ApiEnvelope<UserRow>, {
       id: string; email?: string; phone?: string | null; firstName?: string; lastName?: string;
+      roleIds?: string[]; status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     }>({
       query: ({ id, ...body }) => ({ url: `/users/${id}`, method: 'PATCH', body }),
       invalidatesTags: ['User'],

@@ -53,6 +53,25 @@ function filterWhere(q: ListLeadsQuery): Prisma.LeadWhereInput {
   return where;
 }
 
+// Sort keys that aren't scalar columns on Lead.
+const RELATION_SORTS: Record<string, (dir: Prisma.SortOrder) => Prisma.LeadOrderByWithRelationInput> = {
+  assignedUser: (dir) => ({ assignedUser: { firstName: dir } }),
+};
+// Nullable sortable columns. Blanks are pushed to the end in both directions
+// rather than crowding the top of a descending sort. Prisma rejects `nulls` on
+// required columns (createdAt, status), hence the explicit list.
+const NULLABLE_SORTS = new Set(['createDate', 'company', 'firstName', 'email', 'mobile', 'country', 'sourceChannel', 'shellSpace']);
+
+function orderByOf(q: ListLeadsQuery): Prisma.LeadOrderByWithRelationInput[] {
+  const relation = RELATION_SORTS[q.sortBy];
+  const primary = (relation
+    ? relation(q.sortDir)
+    : NULLABLE_SORTS.has(q.sortBy)
+      ? { [q.sortBy]: { sort: q.sortDir, nulls: 'last' } }
+      : { [q.sortBy]: q.sortDir }) as Prisma.LeadOrderByWithRelationInput;
+  return [primary, { id: q.sortDir }]; // id keeps paging stable across ties
+}
+
 export const leadsRepository = {
   // Offset pagination + total count → drives a proper pager (page numbers,
   // page size, "X–Y of N"). Indexed filters keep this fast at scale.
@@ -61,7 +80,7 @@ export const leadsRepository = {
     const filters = filterWhere(q);
     const where: Prisma.LeadWhereInput = { AND: [scope, filters] };
 
-    const orderBy = [{ [q.sortBy]: q.sortDir }, { id: q.sortDir }] as Prisma.LeadOrderByWithRelationInput[];
+    const orderBy = orderByOf(q);
 
     const [items, total] = await Promise.all([
       prisma.lead.findMany({
@@ -87,7 +106,7 @@ export const leadsRepository = {
     const where: Prisma.LeadWhereInput = { AND: [scope, filters] };
     return prisma.lead.findMany({
       where,
-      orderBy: [{ createdAt: 'desc' }],
+      orderBy: orderByOf(q), // same order the user is looking at on screen
       take: 50000, // safety cap
       include: { assignedUser: { select: { firstName: true, lastName: true } } },
     });

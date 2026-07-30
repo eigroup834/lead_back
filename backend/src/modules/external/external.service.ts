@@ -17,6 +17,24 @@ function scopeWhere(user: AuthUser): Prisma.ExternalLeadWhereInput {
   return user.level === 1 ? {} : { assignedUserId: user.id };
 }
 
+// Sort keys that aren't scalar columns on ExternalLead.
+const EXTERNAL_RELATION_SORTS: Record<string, (dir: Prisma.SortOrder) => Prisma.ExternalLeadOrderByWithRelationInput> = {
+  assignedUser: (dir) => ({ assignedUser: { firstName: dir } }),
+};
+// createdAt and category are required; the rest are nullable and sort blanks
+// last (Prisma rejects `nulls` on required columns).
+const EXTERNAL_NULLABLE_SORTS = new Set(['createDate', 'company', 'email', 'mobile', 'designation', 'eventName']);
+
+function externalOrderBy(q: ListExternalQuery): Prisma.ExternalLeadOrderByWithRelationInput[] {
+  const relation = EXTERNAL_RELATION_SORTS[q.sortBy];
+  const primary = (relation
+    ? relation(q.sortDir)
+    : EXTERNAL_NULLABLE_SORTS.has(q.sortBy)
+      ? { [q.sortBy]: { sort: q.sortDir, nulls: 'last' } }
+      : { [q.sortBy]: q.sortDir }) as Prisma.ExternalLeadOrderByWithRelationInput;
+  return [primary, { id: q.sortDir }]; // id keeps paging stable across ties
+}
+
 export const externalService = {
   async list(user: AuthUser, q: ListExternalQuery) {
     // Once queued for sync a lead leaves this list (it's handed off to its panel).
@@ -32,7 +50,7 @@ export const externalService = {
       ];
     }
 
-    const orderBy = [{ [q.sortBy]: q.sortDir }] as Prisma.ExternalLeadOrderByWithRelationInput[];
+    const orderBy = externalOrderBy(q);
     const [items, total] = await Promise.all([
       prisma.externalLead.findMany({
         where,
