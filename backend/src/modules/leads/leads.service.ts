@@ -174,11 +174,16 @@ export const leadsService = {
         SELECT x."lead_id" AS "leadId",
                h."id",
                h."company",
-               h."event_year"  AS "eventYear",
-               h."assigned_to" AS "assignedTo",
+               h."event_year" AS "eventYear",
+               COALESCE(
+                 NULLIF(BTRIM(CONCAT_WS(' ', u."first_name", u."last_name")), ''),
+                 CASE WHEN h."assigned_to" ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                      THEN NULL ELSE h."assigned_to" END
+               ) AS "assignedTo",
                similarity(h."company", x."company") AS "score"
         FROM (VALUES ${pairs}) AS x("lead_id", "company")
         JOIN "historical_leads" h ON h."company" % x."company"
+        LEFT JOIN "users" u ON u."id" = h."assigned_user_id"
         ORDER BY x."lead_id", "score" DESC
         LIMIT 2000
       `;

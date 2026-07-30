@@ -12,6 +12,7 @@ import {
   type ExternalLeadType,
 } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
 import {
   useGetLeadQuery, useChangeStatusMutation, useAddNoteMutation,
   useScheduleFollowupMutation, useConvertExternalMutation, useAssignSingleMutation,
@@ -32,6 +33,7 @@ export default function LeadDetailsPage() {
   const [scheduleFollowup, { isLoading: scheduling }] = useScheduleFollowupMutation();
   const [convertExternal, { isLoading: converting }] = useConvertExternalMutation();
   const [assignSingle, { isLoading: assigning }] = useAssignSingleMutation();
+  const { guard: dupGuard, dialog: dupDialog } = useHistoricalDuplicateGuard();
   const [assignTo, setAssignTo] = useState('');
   const [status, setStatus] = useState('');
   const [remark, setRemark] = useState('');
@@ -56,7 +58,7 @@ export default function LeadDetailsPage() {
   const members = [...(users?.data ?? [])]
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
-  const doAssign = async () => {
+  const runAssign = async () => {
     try {
       await assignSingle({ leadId: lead.id, assignToId: assignTo }).unwrap();
       setAssignTo('');
@@ -65,6 +67,8 @@ export default function LeadDetailsPage() {
       setToast('Could not assign lead');
     }
   };
+
+  const doAssign = () => dupGuard([lead.id], runAssign);
 
   return (
     <Box>
@@ -296,6 +300,8 @@ export default function LeadDetailsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {dupDialog}
 
       <Snackbar open={!!toast} autoHideDuration={2500} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
         {toast ? <Alert severity="success" onClose={() => setToast(null)}>{toast}</Alert> : undefined}

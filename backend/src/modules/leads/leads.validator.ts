@@ -55,36 +55,32 @@ export const updateLeadSchema = z.object({
 });
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
 
-export const createLeadSchema = z
-  .object({
-    title: z.string().trim().max(50).optional(),
-    company: z.string().trim().max(200).optional(),
-    firstName: z.string().trim().max(100).optional(),
-    lastName: z.string().trim().max(100).optional(),
-    designation: z.string().trim().max(150).optional(),
-    shellSpace: z.string().trim().max(100).optional(),
-    rawSpace: z.string().trim().max(100).optional(),
-    address: z.string().trim().max(500).optional(),
-    city: z.string().trim().max(100).optional(),
-    state: z.string().trim().max(100).optional(),
-    zipCode: z.string().trim().max(20).optional(),
-    country: z.string().trim().max(100).optional(),
-    phone: z.string().trim().max(40).optional(),
-    email: z.string().email().optional().or(z.literal('')),
-    mobile: z.string().trim().max(40).optional(),
-    website: z.string().trim().max(200).optional(),
-    learnAbout: z.string().trim().max(200).optional(),
-    remarks: z.string().trim().max(2000).optional(),
-    eventName: z.string().trim().max(200).optional(),
-    createDate: z.coerce.date().optional(),
-    source: z.enum(LEAD_SOURCES).default('MANUAL'),
-    leadType: z.enum(LEAD_TYPES).optional(),
-    status: z.enum(LEAD_STATUSES).default('NEW'),
-    priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
-  })
-  .refine((d) => Boolean(d.company || d.email || d.firstName || d.mobile), {
-    message: 'Provide at least a company, name, email, or mobile',
-  });
+export const createLeadSchema = z.object({
+  title: z.string().trim().max(50).optional(),
+  company: z.string().trim().min(1, 'Company is required').max(200),
+  firstName: z.string().trim().min(1, 'First name is required').max(100),
+  lastName: z.string().trim().max(100).optional(),
+  designation: z.string().trim().min(1, 'Designation is required').max(150),
+  shellSpace: z.string().trim().max(100).optional(),
+  rawSpace: z.string().trim().max(100).optional(),
+  address: z.string().trim().max(500).optional(),
+  city: z.string().trim().max(100).optional(),
+  state: z.string().trim().max(100).optional(),
+  zipCode: z.string().trim().max(20).optional(),
+  country: z.string().trim().max(100).optional(),
+  phone: z.string().trim().max(40).optional(),
+  email: z.string().trim().min(1, 'Email is required').email('Enter a valid email').max(200),
+  mobile: z.string().trim().min(7, 'Mobile is required').max(40),
+  website: z.string().trim().max(200).optional(),
+  learnAbout: z.string().trim().max(200).optional(),
+  remarks: z.string().trim().max(2000).optional(),
+  eventName: z.string().trim().max(200).optional(),
+  createDate: z.coerce.date().optional(),
+  source: z.enum(LEAD_SOURCES).default('MANUAL'),
+  leadType: z.enum(LEAD_TYPES).optional(),
+  status: z.enum(LEAD_STATUSES).default('NEW'),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
+});
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 
 export const BULK_IMPORT_MAX = 2000;

@@ -19,6 +19,7 @@ import Inventory2Icon from '@mui/icons-material/Inventory2';
 import StatusChip from '@/components/StatusChip';
 import PageHeader from '@/components/PageHeader';
 import { SortableCell, useSort } from '@/components/SortableCell';
+import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
 import {
   LEAD_SOURCE_CHANNELS, LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES,
   prettyLabel, sentenceCase, sourceChannelLabel, type ExternalLeadType,
@@ -28,8 +29,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   useListLeadsQuery, useAssignBulkMutation, useAssignSingleMutation,
-  useConvertExternalMutation, useArchiveToHistoricalMutation, useHistoricalMatchesMutation,
-  type HistoricalMatch,
+  useConvertExternalMutation, useArchiveToHistoricalMutation,
 } from '@/features/leads/leadsApi';
 import { useListUsersQuery } from '@/features/adminApi';
 import { useDashFiltersQuery } from '@/features/dashboard/dashboardApi';
@@ -79,7 +79,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const [assignLeadId, setAssignLeadId] = useState<string | null>(null);
   const [assignTo, setAssignTo] = useState('');
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
-  const [dupWarning, setDupWarning] = useState<{ threshold: number; matches: HistoricalMatch[] } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [convertTarget, setConvertTarget] = useState<{ lead: Lead; type: ExternalLeadType } | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -106,15 +105,16 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const [assignSingle, { isLoading: singleLoading }] = useAssignSingleMutation();
   const [convertExternal, { isLoading: convertLoading }] = useConvertExternalMutation();
   const [archiveToHistorical, { isLoading: archiving }] = useArchiveToHistoricalMutation();
-  const [historicalMatches, { isLoading: checkingDup }] = useHistoricalMatchesMutation();
 
   const canAssign = has('lead.assign');
   const canAssignAction = assignedOnly ? isSuperAdmin : canAssign;
   const canEdit = has('lead.edit');
   const canArchive = has('lead.edit') && !assignedOnly;
-  const canSelect = canAssign || canArchive; 
-  const showActions = canAssign || canEdit; 
+  const canSelect = canAssign || canArchive;
+  const showActions = canAssign || canEdit;
   const assignVerb = assignedOnly ? 'Reassign' : 'Assign';
+
+  const { guard: dupGuard, checking: checkingDup, dialog: dupDialog } = useHistoricalDuplicateGuard(assignVerb);
 
   const leads = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
@@ -140,18 +140,10 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
 
   const confirmThenAssign = async () => {
     const ids = assignMode === 'single' && assignLeadId ? [assignLeadId] : selectedIds;
-    try {
-      const res = await historicalMatches({ leadIds: ids }).unwrap();
-      if (res.data.matches.length) {
-        setDupWarning({ threshold: res.data.threshold, matches: res.data.matches });
-        return;
-      }
-    } catch { }
-    await doAssign();
+    await dupGuard(ids, doAssign);
   };
 
   const doAssign = async () => {
-    setDupWarning(null);
     try {
       if (assignMode === 'single' && assignLeadId) {
         await assignSingle({ leadId: assignLeadId, assignToId: assignTo }).unwrap();
@@ -509,46 +501,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         </DialogActions>
       </Dialog>
 
-      <Dialog open={!!dupWarning} onClose={() => setDupWarning(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Already in Historical Data</DialogTitle>
-        <DialogContent dividers>
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            {dupWarning?.matches.length === 1
-              ? '1 of these leads matches a company already in the historical archive.'
-              : `${dupWarning?.matches.length} of these leads match companies already in the historical archive.`}
-            {' '}Matching at {Math.round((dupWarning?.threshold ?? 0.9) * 100)}% or above on company name.
-          </Alert>
-          <Stack spacing={2}>
-            {dupWarning?.matches.map((m) => (
-              <Box key={m.leadId}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>{m.company}</Typography>
-                <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-                  {m.matches.map((h) => (
-                    <li key={h.id}>
-                      <Typography variant="caption">
-                        {h.company}
-                        {h.eventYear ? ` · ${h.eventYear}` : ''}
-                        {h.assignedTo ? ` · was with ${h.assignedTo}` : ''}
-                        {' · '}{Math.round(h.score * 100)}% match
-                      </Typography>
-                    </li>
-                  ))}
-                </Box>
-              </Box>
-            ))}
-          </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            This company may have exhibited before. Check the Historical Data tab for past
-            participation before working the lead — you can still assign it now.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDupWarning(null)}>Cancel</Button>
-          <Button variant="contained" disabled={bulkLoading || singleLoading} onClick={doAssign}>
-            {assignVerb} anyway
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {dupDialog}
 
       <Snackbar open={!!toast} autoHideDuration={3000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
         {toast ? <Alert severity={toast.sev} onClose={() => setToast(null)}>{toast.msg}</Alert> : undefined}

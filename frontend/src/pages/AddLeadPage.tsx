@@ -9,6 +9,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LeadExcelImport from '@/components/LeadExcelImport';
 import PageHeader from '@/components/PageHeader';
+import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
 import { LEAD_SOURCES, PRIORITIES, leadsListPath, prettyLabel } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
@@ -29,12 +30,15 @@ const NAME_RE = /^[A-Za-z\s.'-]+$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MOBILE_RE = /^[+]?[\d\s-]{7,20}$/;         
 
-function validate(form: Form) {
+function validate(form: Form, requireAll: boolean) {
+  const required = (v: string) => (requireAll && !v.trim() ? 'Required' : '');
   return {
-    firstName: form.firstName && !NAME_RE.test(form.firstName) ? 'Letters only' : '',
+    company: required(form.company),
+    designation: required(form.designation),
+    firstName: form.firstName && !NAME_RE.test(form.firstName) ? 'Letters only' : required(form.firstName),
     lastName: form.lastName && !NAME_RE.test(form.lastName) ? 'Letters only' : '',
-    email: form.email && !EMAIL_RE.test(form.email) ? 'Enter a valid email' : '',
-    mobile: form.mobile && !MOBILE_RE.test(form.mobile) ? 'Digits only' : '',
+    email: form.email ? (!EMAIL_RE.test(form.email) ? 'Enter a valid email' : '') : required(form.email),
+    mobile: form.mobile ? (!MOBILE_RE.test(form.mobile) ? 'Digits only' : '') : required(form.mobile),
   };
 }
 
@@ -62,6 +66,7 @@ export default function AddLeadPage() {
   const [createLead, { isLoading, error }] = useCreateLeadMutation();
   const [createHistorical, { isLoading: savingHist }] = useCreateHistoricalLeadMutation();
   const [assignSingle] = useAssignSingleMutation();
+  const { guard: dupGuard, dialog: dupDialog } = useHistoricalDuplicateGuard();
   const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !canAssign });
   const [toast, setToast] = useState<string | null>(null);
 
@@ -69,10 +74,20 @@ export default function AddLeadPage() {
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
   const set = (k: keyof Form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const errors = validate(form);
+  const reqd = destination === 'LEAD';
+  const errors = validate(form, reqd);
   const hasErrors = Object.values(errors).some(Boolean);
 
+  const [touched, setTouched] = useState<Partial<Record<keyof Form, boolean>>>({});
+  const markTouched = (k: keyof Form) => () => setTouched((t) => ({ ...t, [k]: true }));
+  const shownError = (k: keyof typeof errors) =>
+    (touched[k] || form[k] !== '') ? errors[k] : '';
+
   const submit = async () => {
+    if (hasErrors) {
+      setTouched({ company: true, firstName: true, designation: true, email: true, mobile: true });
+      return;
+    }
     if (destination === 'HISTORICAL') {
       await createHistorical({
         company: form.company || undefined,
@@ -103,11 +118,20 @@ export default function AddLeadPage() {
       setTimeout(() => navigate(leadsListPath(level)), 900);
       return;
     }
-    if (assignTo) {
-      try { await assignSingle({ leadId: res.data.id, assignToId: assignTo }).unwrap(); } catch { }
+    const goToLead = () => {
+      setToast('Lead added');
+      setTimeout(() => navigate(`/leads/${res.data.id}`), 600);
+    };
+
+    if (!assignTo) {
+      goToLead();
+      return;
     }
-    setToast('Lead added');
-    setTimeout(() => navigate(`/leads/${res.data.id}`), 600);
+
+    await dupGuard([res.data.id], async () => {
+      try { await assignSingle({ leadId: res.data.id, assignToId: assignTo }).unwrap(); } catch { }
+      goToLead();
+    });
   };
 
   return (
@@ -209,11 +233,11 @@ export default function AddLeadPage() {
           <CardContent>
             <Grid container spacing={2}>
               <Grid item xs={6} sm={2}><TextField size="small" fullWidth label="Title" value={form.title} onChange={set('title')} /></Grid>
-              <Grid item xs={6} sm={5}><TextField size="small" fullWidth label="First name" value={form.firstName} onChange={set('firstName')} error={!!errors.firstName} helperText={errors.firstName} /></Grid>
-              <Grid item xs={12} sm={5}><TextField size="small" fullWidth label="Last name" value={form.lastName} onChange={set('lastName')} error={!!errors.lastName} helperText={errors.lastName} /></Grid>
-              <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Designation" value={form.designation} onChange={set('designation')} /></Grid>
-              <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Email" type="email" value={form.email} onChange={set('email')} error={!!errors.email} helperText={errors.email} /></Grid>
-              <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Mobile" value={form.mobile} onChange={set('mobile')} error={!!errors.mobile} helperText={errors.mobile} /></Grid>
+              <Grid item xs={6} sm={5}><TextField size="small" fullWidth required={reqd} label="First name" value={form.firstName} onChange={set('firstName')} onBlur={markTouched('firstName')} error={!!shownError('firstName')} helperText={shownError('firstName')} /></Grid>
+              <Grid item xs={12} sm={5}><TextField size="small" fullWidth label="Last name" value={form.lastName} onChange={set('lastName')} onBlur={markTouched('lastName')} error={!!shownError('lastName')} helperText={shownError('lastName')} /></Grid>
+              <Grid item xs={12} sm={4}><TextField size="small" fullWidth required={reqd} label="Designation" value={form.designation} onChange={set('designation')} onBlur={markTouched('designation')} error={!!shownError('designation')} helperText={shownError('designation')} /></Grid>
+              <Grid item xs={12} sm={4}><TextField size="small" fullWidth required={reqd} label="Email" type="email" value={form.email} onChange={set('email')} onBlur={markTouched('email')} error={!!shownError('email')} helperText={shownError('email')} /></Grid>
+              <Grid item xs={12} sm={4}><TextField size="small" fullWidth required={reqd} label="Mobile" value={form.mobile} onChange={set('mobile')} onBlur={markTouched('mobile')} error={!!shownError('mobile')} helperText={shownError('mobile')} /></Grid>
             </Grid>
           </CardContent>
         </Card>
@@ -222,7 +246,7 @@ export default function AddLeadPage() {
           <CardHeader title="Company & participation" />
           <CardContent>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Company" value={form.company} onChange={set('company')} /></Grid>
+              <Grid item xs={12} sm={6}><TextField size="small" fullWidth required={reqd} label="Company" value={form.company} onChange={set('company')} onBlur={markTouched('company')} error={!!shownError('company')} helperText={shownError('company')} /></Grid>
               <Grid item xs={12} sm={3}><TextField size="small" fullWidth label="Shell space" value={form.shellSpace} onChange={set('shellSpace')} /></Grid>
               <Grid item xs={12} sm={3}><TextField size="small" fullWidth label="Raw space" value={form.rawSpace} onChange={set('rawSpace')} /></Grid>
               <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Website" value={form.website} onChange={set('website')} /></Grid>
@@ -254,12 +278,14 @@ export default function AddLeadPage() {
         </Card>
 
         <Box>
-          <Button variant="contained" size="large" startIcon={<SaveIcon />} disabled={isLoading || savingHist || hasErrors} onClick={submit}>
+          <Button variant="contained" size="large" startIcon={<SaveIcon />} disabled={isLoading || savingHist} onClick={submit}>
             {isLoading || savingHist ? 'Saving…' : destination === 'HISTORICAL' ? 'Save to Historical' : 'Save Lead'}
           </Button>
         </Box>
       </Stack>
       )}
+
+      {dupDialog}
 
       <Snackbar open={!!toast} autoHideDuration={1500} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
         {toast ? <Alert severity="success">{toast}</Alert> : undefined}
