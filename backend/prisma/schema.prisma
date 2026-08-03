@@ -235,7 +235,6 @@ model User {
   auditLogs       AuditLog[]
   notifications   Notification[]
   savedFilters    SavedFilter[]
-  historicalUploads HistoricalUpload[]
   assignedExternalLeads ExternalLead[] @relation("ExternalAssignee")
   assignedHistoricalLeads HistoricalLead[] @relation("HistoricalAssignee")
   historicalLeadEdits     HistoricalLeadEdit[]
@@ -547,43 +546,6 @@ model ExternalLead {
 // stored as JSON keyed by the sheet's own column headers. `mapping` records how the
 // arbitrary columns line up with our Lead fields so any row can be converted into a
 // real (exhibitor) lead later. Ownership is per-user — reps only see their own uploads.
-model HistoricalUpload {
-  id             String    @id @default(uuid()) @db.Uuid
-  ownerId        String    @map("owner_id") @db.Uuid
-  fileName       String    @map("file_name")
-  sheetName      String?   @map("sheet_name")
-  columns        Json      // string[] of the sheet's header names, in order
-  mapping        Json?     // { leadField: columnName } — how columns map to Lead fields
-  rowCount       Int       @default(0) @map("row_count")
-  convertedCount Int       @default(0) @map("converted_count")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
-
-  owner User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  rows  HistoricalRow[]
-
-  @@index([ownerId])
-  @@index([createdAt])
-  @@map("historical_uploads")
-}
-
-model HistoricalRow {
-  id              String    @id @default(uuid()) @db.Uuid
-  uploadId        String    @map("upload_id") @db.Uuid
-  rowIndex        Int       @map("row_index") // 0-based position in the sheet
-  data            Json      // { columnName: cellValue } for this row
-  convertedLeadId String?   @map("converted_lead_id") @db.Uuid // set once turned into a Lead
-  convertedAt     DateTime? @map("converted_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-
-  upload HistoricalUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
-
-  @@index([uploadId, rowIndex])
-  @@index([convertedLeadId])
-  @@map("historical_rows")
-}
-
 // A converted lead archived out of Lead Management into a permanent, year-tagged
 // history (e.g. "Tata — 2026 event"). Kept forever: moving one back to Lead
 // Management for a future event creates a fresh Lead and leaves this record intact.

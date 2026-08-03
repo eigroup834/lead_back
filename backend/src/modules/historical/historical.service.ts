@@ -3,18 +3,11 @@ import { cache } from '@services/cache.service';
 import { assertAssignableUser } from '@services/user.guard';
 import { AppError } from '@utils/AppError';
 import type { AuthUser } from '@/types';
-import { MAPPABLE_LEAD_FIELDS } from './historical.validator';
 import type {
-  ConvertBulkInput,
-  ConvertRowInput,
-  CreateUploadInput,
   CreateHistoricalLeadInput,
   ListHistoricalLeadsQuery,
-  ListRowsQuery,
-  MappableLeadField,
   RestoreHistoricalInput,
   UpdateHistoricalLeadInput,
-  UpdateUploadInput,
 } from './historical.validator';
 import type { Prisma } from '@prisma/client';
 
@@ -71,179 +64,18 @@ function historicalOrderBy(q: ListHistoricalLeadsQuery): Prisma.HistoricalLeadOr
     : [primary, { archivedAt: 'desc' }, { id: 'desc' }];
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-type Mapping = Partial<Record<MappableLeadField, string>>;
-type RowData = Record<string, unknown>;
 
-function str(v: unknown): string | undefined {
-  if (v === null || v === undefined) return undefined;
-  const s = String(v).trim();
-  return s.length ? s : undefined;
-}
 
-function mapRowToLead(
-  mapping: Mapping,
-  data: RowData,
-  overrides: ConvertRowInput['overrides'] & { priority?: string } = {},
-): Prisma.LeadUncheckedCreateInput | null {
-  const out: Record<string, string> = {};
-  for (const field of MAPPABLE_LEAD_FIELDS) {
-    const col = mapping[field];
-    const val = col ? str(data[col]) : undefined;
-    if (val !== undefined) out[field] = val;
-  }
-  for (const [k, v] of Object.entries(overrides ?? {})) {
-    if (k === 'priority') continue;
-    const s = str(v);
-    if (s !== undefined) out[k] = s;
-    else delete out[k];
-  }
 
-  if (out.email && !EMAIL_RE.test(out.email)) {
-    out.remarks = [out.remarks, `Email (unverified): ${out.email}`].filter(Boolean).join(' | ');
-    delete out.email;
-  }
-
-  if (!(out.company || out.email || out.firstName || out.mobile)) return null;
-
-  const { createDate, priority, ...rest } = out as Record<string, string> & { createDate?: string };
-  const lead: Prisma.LeadUncheckedCreateInput = {
-    ...rest,
-    source: 'MANUAL',
-    leadType: 'EXHIBITION',
-    status: 'NEW',
-    priority: (overrides?.priority as Prisma.LeadUncheckedCreateInput['priority']) ?? 'MEDIUM',
-  };
-  if (createDate) {
-    const d = new Date(createDate);
-    if (!Number.isNaN(d.getTime())) lead.createDate = d;
-  }
-  return lead;
-}
-
-async function ownUploadOrThrow(id: string, userId: string) {
-  const upload = await prisma.historicalUpload.findFirst({ where: { id, ownerId: userId, deletedAt: null } });
-  if (!upload) throw AppError.notFound('Historical upload not found');
-  return upload;
-}
 
 export const historicalService = {
-  async create(user: AuthUser, input: CreateUploadInput) {
-    const upload = await prisma.historicalUpload.create({
-      data: {
-        ownerId: user.id,
-        fileName: input.fileName,
-        sheetName: input.sheetName ?? null,
-        columns: input.columns,
-        mapping: (input.mapping ?? {}) as Prisma.InputJsonValue,
-        rowCount: input.rows.length,
-        rows: {
-          create: input.rows.map((data, i) => ({ rowIndex: i, data: data as Prisma.InputJsonValue })),
-        },
-      },
-    });
-    return upload;
-  },
 
-  listUploads(user: AuthUser) {
-    return prisma.historicalUpload.findMany({
-      where: { ownerId: user.id, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true, fileName: true, sheetName: true, columns: true, mapping: true,
-        rowCount: true, convertedCount: true, createdAt: true, updatedAt: true,
-      },
-    });
-  },
 
-  async getUpload(user: AuthUser, id: string) {
-    const upload = await ownUploadOrThrow(id, user.id);
-    return upload;
-  },
 
-  async listRows(user: AuthUser, id: string, q: ListRowsQuery) {
-    await ownUploadOrThrow(id, user.id);
-    const where: Prisma.HistoricalRowWhereInput = { uploadId: id };
-    if (q.converted === 'true') where.convertedLeadId = { not: null };
-    if (q.converted === 'false') where.convertedLeadId = null;
 
-    const [total, items] = await prisma.$transaction([
-      prisma.historicalRow.count({ where }),
-      prisma.historicalRow.findMany({
-        where,
-        orderBy: { rowIndex: 'asc' },
-        skip: (q.page - 1) * q.limit,
-        take: q.limit,
-      }),
-    ]);
-    return { items, meta: { page: q.page, limit: q.limit, total, pages: Math.ceil(total / q.limit) } };
-  },
 
-  async update(user: AuthUser, id: string, input: UpdateUploadInput) {
-    await ownUploadOrThrow(id, user.id);
-    const data: Prisma.HistoricalUploadUpdateInput = {};
-    if (input.fileName !== undefined) data.fileName = input.fileName;
-    if (input.mapping !== undefined) data.mapping = input.mapping as Prisma.InputJsonValue;
-    return prisma.historicalUpload.update({ where: { id }, data });
-  },
 
-  async remove(user: AuthUser, id: string) {
-    await ownUploadOrThrow(id, user.id);
-    await prisma.historicalUpload.update({ where: { id }, data: { deletedAt: new Date() } });
-  },
 
-  async convertRow(user: AuthUser, id: string, rowId: string, input: ConvertRowInput) {
-    const upload = await ownUploadOrThrow(id, user.id);
-    const row = await prisma.historicalRow.findFirst({ where: { id: rowId, uploadId: id } });
-    if (!row) throw AppError.notFound('Row not found');
-    if (row.convertedLeadId) throw AppError.conflict('Row already converted to a lead');
-
-    const leadData = mapRowToLead((upload.mapping ?? {}) as Mapping, row.data as RowData, input.overrides);
-    if (!leadData) {
-      throw AppError.badRequest('Row has no company, name, email, or mobile to build a lead from. Set a column mapping first.');
-    }
-
-    const lead = await prisma.$transaction(async (tx) => {
-      const created = await tx.lead.create({ data: leadData });
-      await tx.historicalRow.update({
-        where: { id: rowId },
-        data: { convertedLeadId: created.id, convertedAt: new Date() },
-      });
-      await tx.historicalUpload.update({ where: { id }, data: { convertedCount: { increment: 1 } } });
-      return created;
-    });
-    await bustDashboard();
-    return lead;
-  },
-
-  async convertBulk(user: AuthUser, id: string, input: ConvertBulkInput) {
-    const upload = await ownUploadOrThrow(id, user.id);
-    const where: Prisma.HistoricalRowWhereInput = { uploadId: id, convertedLeadId: null };
-    if (input.rowIds?.length) where.id = { in: input.rowIds };
-    const rows = await prisma.historicalRow.findMany({ where, orderBy: { rowIndex: 'asc' } });
-
-    const mapping = (upload.mapping ?? {}) as Mapping;
-    let converted = 0;
-    let skipped = 0;
-
-    for (const row of rows) {
-      const leadData = mapRowToLead(mapping, row.data as RowData, { priority: input.priority });
-      if (!leadData) { skipped += 1; continue; }
-      await prisma.$transaction(async (tx) => {
-        const created = await tx.lead.create({ data: leadData });
-        await tx.historicalRow.update({
-          where: { id: row.id },
-          data: { convertedLeadId: created.id, convertedAt: new Date() },
-        });
-      });
-      converted += 1;
-    }
-    if (converted > 0) {
-      await prisma.historicalUpload.update({ where: { id }, data: { convertedCount: { increment: converted } } });
-      await bustDashboard();
-    }
-    return { converted, skipped, total: rows.length };
-  },
 
   async listLeads(user: AuthUser, q: ListHistoricalLeadsQuery) {
     const where: Prisma.HistoricalLeadWhereInput = {

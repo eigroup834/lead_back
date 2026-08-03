@@ -5,17 +5,11 @@ import { validate } from '@middleware/validate.middleware';
 import { asyncHandler } from '@utils/asyncHandler';
 import { historicalController } from './historical.controller';
 import {
-  convertBulkSchema,
-  convertRowSchema,
-  createUploadSchema,
   createHistoricalLeadSchema,
   idParam,
   listHistoricalLeadsQuery,
-  listRowsQuery,
   restoreHistoricalSchema,
   updateHistoricalLeadSchema,
-  updateUploadSchema,
-  uploadRowParams,
 } from './historical.validator';
 
 const router = Router();
@@ -31,13 +25,12 @@ router.patch('/leads/:id', requirePermission('historical.view'), validate({ para
 router.delete('/leads/:id', requirePermission('historical.view'), validate({ params: idParam }), asyncHandler(historicalController.removeLead));
 router.post('/leads/:id/restore', requirePermission('historical.view'), validate({ params: idParam }), asyncHandler(historicalController.restoreRemovedLead));
 
-router.get('/uploads', requirePermission('historical.view'), asyncHandler(historicalController.list));
-router.post('/uploads', requirePermission('historical.manage'), validate({ body: createUploadSchema }), asyncHandler(historicalController.create));
-router.get('/uploads/:id', requirePermission('historical.view'), validate({ params: idParam }), asyncHandler(historicalController.get));
-router.get('/uploads/:id/rows', requirePermission('historical.view'), validate({ params: idParam, query: listRowsQuery }), asyncHandler(historicalController.rows));
-router.patch('/uploads/:id', requirePermission('historical.manage'), validate({ params: idParam, body: updateUploadSchema }), asyncHandler(historicalController.update));
-router.delete('/uploads/:id', requirePermission('historical.manage'), validate({ params: idParam }), asyncHandler(historicalController.remove));
-router.post('/uploads/:id/convert', requirePermission('historical.manage'), validate({ params: idParam, body: convertBulkSchema }), asyncHandler(historicalController.convertBulk));
-router.post('/uploads/:id/rows/:rowId/convert', requirePermission('historical.manage'), validate({ params: uploadRowParams, body: convertRowSchema }), asyncHandler(historicalController.convertRow));
+
+
+
+
+
+
+
 
 export default router;
