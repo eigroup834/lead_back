@@ -32,6 +32,12 @@ async function assignOne(
   await tx.leadAssignment.create({
     data: { leadId, assignedToId: assignToId, assignedById, type: realType, strategy, note },
   });
+
+  await tx.leadFollowup.updateMany({
+    where: { leadId, status: 'PENDING', assigneeId: { not: assignToId } },
+    data: { assigneeId: assignToId, reminderSentAt: null, reminderDaySentAt: null },
+  });
+
   if (existing.status === 'NEW') {
     await tx.leadStatusHistory.create({
       data: { leadId, fromStatus: 'NEW', toStatus: 'ASSIGNED', changedById: assignedById },

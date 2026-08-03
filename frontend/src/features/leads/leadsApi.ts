@@ -8,6 +8,9 @@ export interface HistoricalMatch {
   matches: Array<{
     id: string;
     company: string | null;
+    name: string | null;
+    email: string | null;
+    mobile: string | null;
     eventYear: number | null;
     assignedTo: string | null;
     score: number;

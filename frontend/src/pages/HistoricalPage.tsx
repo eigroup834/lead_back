@@ -3,7 +3,7 @@ import {
   Alert, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, InputAdornment, InputLabel, MenuItem, Select, Snackbar, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField,
-  Toolbar, Tooltip, Typography,
+  Toolbar, Tooltip, Typography, FormControlLabel, Switch, Skeleton,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import HistoryEduIcon from '@mui/icons-material/HistoryEdu';
@@ -12,6 +12,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import RestoreFromTrashIcon from '@mui/icons-material/RestoreFromTrash';
 import IconButton from '@mui/material/IconButton';
 import Grid from '@mui/material/Grid';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -19,13 +21,32 @@ import { useDebounce } from '@/hooks/useDebounce';
 import {
   useListHistoricalLeadsQuery, useRestoreHistoricalLeadsMutation, useHistoricalEventsQuery,
   useHistoricalLeadHistoryQuery, useUpdateHistoricalLeadMutation,
+  useDeleteHistoricalLeadMutation, useRestoreRemovedHistoricalLeadMutation,
   type HistoricalLead, type ExhHistoryEntry,
 } from '@/features/historical/historicalApi';
 import { useListUsersQuery } from '@/features/adminApi';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import { SkeletonRows } from '@/components/Skeletons';
+import { NAME_RE, EMAIL_RE, MOBILE_RE } from '@/constants';
 
 const NO_EVENT = '__NO_EVENT__';
+
+function validateEdit(f: { company: string; name: string; email: string; mobile: string; altEmail: string; altMobile: string }) {
+  const errors = {
+    company: f.company.trim() && f.company.trim().length < 2 ? 'At least 2 characters' : '',
+    name: f.name.trim() && !NAME_RE.test(f.name.trim()) ? 'Letters, spaces, . - only' : '',
+    email: f.email.trim() && !EMAIL_RE.test(f.email.trim()) ? 'Enter a valid email' : '',
+    mobile: f.mobile.trim() && !MOBILE_RE.test(f.mobile.trim()) ? 'Digits only, 7-20 characters' : '',
+    altEmail: f.altEmail.trim() && !EMAIL_RE.test(f.altEmail.trim()) ? 'Enter a valid email' : '',
+    altMobile: f.altMobile.trim() && !MOBILE_RE.test(f.altMobile.trim()) ? 'Digits only, 7-20 characters' : '',
+    identity: '',
+  };
+  if (!f.company.trim() && !f.name.trim() && !f.email.trim() && !f.mobile.trim()) {
+    errors.identity = 'Keep at least a company, contact name, email or mobile';
+  }
+  return errors;
+}
 
 type HistoricalSortKey =
   | 'archivedAt' | 'eventYear' | 'company' | 'name' | 'designation' | 'email'
@@ -38,7 +59,7 @@ export default function HistoricalPage() {
   const canAssign = level === 1; 
 
   const EDIT_FIELDS = [
-    'company', 'name', 'designation', 'email', 'mobile', 'city', 'country',
+    'company', 'name', 'designation', 'email', 'mobile', 'altEmail', 'altMobile', 'city', 'country',
     'eventName', 'eventYear', 'industry', 'branchOffice', 'remark', 'specialRemarks', 'spaceSqm',
   ] as const;
   type EditForm = Record<(typeof EDIT_FIELDS)[number], string> & { assignedUserId: string };
@@ -54,6 +75,8 @@ export default function HistoricalPage() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [restoreConfirm, setRestoreConfirm] = useState<{ ids: string[]; label: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<HistoricalLead | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
   const [detail, setDetail] = useState<HistoricalLead | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm>(blankEdit());
@@ -65,6 +88,7 @@ export default function HistoricalPage() {
     assigneeId: assignee || undefined,
     eventName: eventName && eventName !== NO_EVENT ? eventName : undefined,
     noEventName: eventName === NO_EVENT || undefined,
+    includeInactive: showInactive || undefined,
     sortBy: sort.by, sortDir: sort.dir,
   });
   const { data: events } = useHistoricalEventsQuery();
@@ -74,6 +98,8 @@ export default function HistoricalPage() {
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
   const [restore, { isLoading: restoring }] = useRestoreHistoricalLeadsMutation();
   const [update, { isLoading: updating }] = useUpdateHistoricalLeadMutation();
+  const [softDelete, { isLoading: deleting }] = useDeleteHistoricalLeadMutation();
+  const [undelete, { isLoading: undeleting }] = useRestoreRemovedHistoricalLeadMutation();
 
   const rows = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
@@ -94,11 +120,34 @@ export default function HistoricalPage() {
     }
   };
 
+  const doSoftDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await softDelete(deleteTarget.id).unwrap();
+      setToast({ msg: 'Marked inactive — the record is kept and can be restored', sev: 'success' });
+    } catch {
+      setToast({ msg: 'Could not mark inactive', sev: 'error' });
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
+
+  const doUndelete = async (r: HistoricalLead) => {
+    try {
+      await undelete(r.id).unwrap();
+      setToast({ msg: 'Restored to the archive', sev: 'success' });
+    } catch {
+      setToast({ msg: 'Could not restore', sev: 'error' });
+    }
+  };
+
   const openEdit = (r: HistoricalLead) => {
     setEditId(r.id);
     setEditForm({
       company: r.company ?? '', name: r.name ?? '', designation: r.designation ?? '',
-      email: r.email ?? '', mobile: r.mobile ?? '', city: r.city ?? '', country: r.country ?? '',
+      email: r.email ?? '', mobile: r.mobile ?? '',
+      altEmail: r.altEmail ?? '', altMobile: r.altMobile ?? '',
+      city: r.city ?? '', country: r.country ?? '',
       eventName: r.eventName ?? '', eventYear: r.eventYear != null ? String(r.eventYear) : '',
       industry: r.industry ?? '', branchOffice: r.branchOffice ?? '', remark: r.remark ?? '',
       specialRemarks: r.specialRemarks ?? '', spaceSqm: r.spaceSqm ?? '',
@@ -107,14 +156,18 @@ export default function HistoricalPage() {
     setEditHistory([...r.exhHistory].sort((a, b) => a.year - b.year));
   };
   const setEF = (k: keyof EditForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }));
+  const editErrors = validateEdit(editForm);
+  const editInvalid = Object.values(editErrors).some(Boolean);
 
   const saveEdit = async () => {
-    if (!editId) return;
+    if (!editId || editInvalid) return;
     try {
       await update({
         id: editId,
         company: editForm.company || null, name: editForm.name || null, designation: editForm.designation || null,
-        email: editForm.email || null, mobile: editForm.mobile || null, city: editForm.city || null,
+        email: editForm.email || null, mobile: editForm.mobile || null,
+        altEmail: editForm.altEmail || null, altMobile: editForm.altMobile || null,
+        city: editForm.city || null,
         country: editForm.country || null, eventName: editForm.eventName || null,
         eventYear: editForm.eventYear ? Number(editForm.eventYear) : null,
         industry: editForm.industry || null, branchOffice: editForm.branchOffice || null,
@@ -167,8 +220,13 @@ export default function HistoricalPage() {
               </Select>
             </FormControl>
           )}
+          <FormControlLabel
+            sx={{ ml: 0 }}
+            control={<Switch size="small" checked={showInactive} onChange={(e) => { setShowInactive(e.target.checked); setSelected({}); setPage(0); }} />}
+            label={<Typography variant="body2">Inactive</Typography>}
+          />
           <Box sx={{ flex: 1 }} />
-          {canRestore && selectedIds.length > 0 && (
+          {canRestore && !showInactive && selectedIds.length > 0 && (
             <Button
               size="small" variant="contained" startIcon={<ReplayIcon />} disabled={restoring}
               onClick={() => setRestoreConfirm({ ids: selectedIds, label: `${selectedIds.length} lead(s)` })}
@@ -259,28 +317,54 @@ export default function HistoricalPage() {
                                 <VisibilityIcon fontSize="small" />
                               </Button>
                             </Tooltip>
-                            {canRestore && (
-                              <Tooltip title="Move back to Lead Management">
+                            {showInactive ? (
+                              <Tooltip title="Restore to the archive">
                                 <Button
-                                  size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }}
-                                  onClick={() => setRestoreConfirm({ ids: [r.id], label: `“${r.company || name || 'this lead'}”` })}
+                                  size="small" variant="outlined" color="success" sx={{ minWidth: 0, px: 1 }}
+                                  disabled={undeleting} onClick={() => doUndelete(r)}
                                 >
-                                  <ReplayIcon fontSize="small" />
+                                  <RestoreFromTrashIcon fontSize="small" />
                                 </Button>
                               </Tooltip>
-                            )}
-                            {canEdit && (
-                              <Tooltip title="Edit">
-                                <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }} onClick={() => openEdit(r)}>
-                                  <EditIcon fontSize="small" />
-                                </Button>
-                              </Tooltip>
+                            ) : (
+                              <>
+                                {canRestore && (
+                                  <Tooltip title="Move back to Lead Management">
+                                    <Button
+                                      size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }}
+                                      onClick={() => setRestoreConfirm({ ids: [r.id], label: `“${r.company || name || 'this lead'}”` })}
+                                    >
+                                      <ReplayIcon fontSize="small" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                                {canEdit && (
+                                  <Tooltip title="Edit">
+                                    <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }} onClick={() => openEdit(r)}>
+                                      <EditIcon fontSize="small" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                                {canEdit && (
+                                  <Tooltip title="Delete (marks inactive, keeps the record)">
+                                    <Button
+                                      size="small" variant="outlined" color="error" sx={{ minWidth: 0, px: 1 }}
+                                      onClick={() => setDeleteTarget(r)}
+                                    >
+                                      <DeleteOutlineIcon fontSize="small" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                              </>
                             )}
                           </Stack>
                         </TableCell>
                     </TableRow>
                   );
                 })}
+                {isFetching && rows.length === 0 && (
+                  <SkeletonRows rows={rowsPerPage > 10 ? 10 : rowsPerPage} columns={canSelect ? 11 : 10} />
+                )}
                 {!isFetching && rows.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={canSelect ? 11 : 10} align="center" sx={{ py: 6, color: 'text.secondary' }}>No historical leads match your filters</TableCell>
@@ -312,6 +396,8 @@ export default function HistoricalPage() {
               <DetailRow label="Designation" value={detail.designation} />
               <DetailRow label="Email" value={detail.email} />
               <DetailRow label="Mobile" value={detail.mobile} />
+              <DetailRow label="Alt. email" value={detail.altEmail} />
+              <DetailRow label="Alt. mobile" value={detail.altMobile} />
               <DetailRow label="Event" value={detail.eventName} />
               <DetailRow label="Industry" value={detail.industry} />
               <DetailRow label="City" value={detail.city} />
@@ -344,6 +430,25 @@ export default function HistoricalPage() {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          Mark “{deleteTarget?.company || deleteTarget?.name || 'this record'}” inactive?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            It will drop out of the archive list, the Event filter and the duplicate check when
+            assigning leads. Nothing is deleted — the record and its edit history are kept, and you
+            can bring it back any time from the Inactive view.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button variant="contained" color="error" disabled={deleting} onClick={doSoftDelete}>
+            {deleting ? 'Working…' : 'Mark inactive'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={!!restoreConfirm} onClose={() => setRestoreConfirm(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Move {restoreConfirm?.label} to Lead Management?</DialogTitle>
         <DialogContent>
@@ -364,12 +469,15 @@ export default function HistoricalPage() {
       <Dialog open={!!editId} onClose={() => setEditId(null)} maxWidth="md" fullWidth>
         <DialogTitle>Edit historical lead</DialogTitle>
         <DialogContent dividers>
+          {editErrors.identity && <Alert severity="warning" sx={{ mb: 2 }}>{editErrors.identity}</Alert>}
           <Grid container spacing={2} sx={{ mt: 0 }}>
-            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Company" value={editForm.company} onChange={setEF('company')} /></Grid>
-            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Contact name" value={editForm.name} onChange={setEF('name')} /></Grid>
+            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Company" value={editForm.company} onChange={setEF('company')} error={!!editErrors.company} helperText={editErrors.company} /></Grid>
+            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Contact name" value={editForm.name} onChange={setEF('name')} error={!!editErrors.name} helperText={editErrors.name} /></Grid>
             <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Designation" value={editForm.designation} onChange={setEF('designation')} /></Grid>
-            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Email" value={editForm.email} onChange={setEF('email')} /></Grid>
-            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Mobile" value={editForm.mobile} onChange={setEF('mobile')} /></Grid>
+            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Email" value={editForm.email} onChange={setEF('email')} error={!!editErrors.email} helperText={editErrors.email} /></Grid>
+            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Mobile" value={editForm.mobile} onChange={setEF('mobile')} error={!!editErrors.mobile} helperText={editErrors.mobile} /></Grid>
+            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Alternate email" value={editForm.altEmail} onChange={setEF('altEmail')} error={!!editErrors.altEmail} helperText={editErrors.altEmail} /></Grid>
+            <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Alternate mobile" value={editForm.altMobile} onChange={setEF('altMobile')} error={!!editErrors.altMobile} helperText={editErrors.altMobile} /></Grid>
             <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Event name" value={editForm.eventName} onChange={setEF('eventName')} /></Grid>
             <Grid item xs={6} sm={3}><TextField size="small" fullWidth label="Event year" type="number" value={editForm.eventYear} onChange={setEF('eventYear')} /></Grid>
             <Grid item xs={6} sm={3}><TextField size="small" fullWidth label="Industry" value={editForm.industry} onChange={setEF('industry')} /></Grid>
@@ -418,7 +526,7 @@ export default function HistoricalPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditId(null)}>Cancel</Button>
-          <Button variant="contained" disabled={updating} onClick={saveEdit}>{updating ? 'Saving…' : 'Save changes'}</Button>
+          <Button variant="contained" disabled={updating || editInvalid} onClick={saveEdit}>{updating ? 'Saving…' : 'Save changes'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -433,7 +541,18 @@ function EditHistory({ leadId }: { leadId: string }) {
   const { data, isFetching } = useHistoricalLeadHistoryQuery(leadId);
   const edits = data?.data ?? [];
 
-  if (isFetching && !data) return <CircularProgress size={18} />;
+  if (isFetching && !data) {
+    return (
+      <Stack spacing={1.5}>
+        {[0, 1].map((i) => (
+          <Box key={i} sx={{ borderLeft: 2, borderColor: 'divider', pl: 1.5 }}>
+            <Skeleton animation="wave" width={180} height={14} />
+            <Skeleton animation="wave" width="70%" height={16} />
+          </Box>
+        ))}
+      </Stack>
+    );
+  }
   if (!edits.length) return <Typography variant="body2" color="text.secondary">No edits recorded yet</Typography>;
 
   return (

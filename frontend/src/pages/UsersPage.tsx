@@ -15,6 +15,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { sentenceCase } from '@/constants';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import { SkeletonRows } from '@/components/Skeletons';
 
 type UserSortKey = 'firstName' | 'email' | 'phone' | 'status' | 'lastLoginAt' | 'createdAt';
 
@@ -153,6 +154,9 @@ export default function UsersPage() {
                 )}
               </TableRow>
             ))}
+            {isFetching && users.length === 0 && (
+              <SkeletonRows rows={8} columns={colCount} />
+            )}
             {!isFetching && users.length === 0 && (
               <TableRow><TableCell colSpan={colCount} align="center" sx={{ py: 5, color: 'text.secondary' }}>No users</TableCell></TableRow>
             )}

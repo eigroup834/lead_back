@@ -28,7 +28,8 @@ router.get('/leads/events', requirePermission('historical.view'), asyncHandler(h
 router.post('/leads/restore', requirePermission('historical.view'), validate({ body: restoreHistoricalSchema }), asyncHandler(historicalController.restore));
 router.get('/leads/:id/history', requirePermission('historical.view'), validate({ params: idParam }), asyncHandler(historicalController.leadHistory));
 router.patch('/leads/:id', requirePermission('historical.view'), validate({ params: idParam, body: updateHistoricalLeadSchema }), asyncHandler(historicalController.updateLead));
-router.delete('/leads/:id', requirePermission('lead.edit'), validate({ params: idParam }), asyncHandler(historicalController.removeLead));
+router.delete('/leads/:id', requirePermission('historical.view'), validate({ params: idParam }), asyncHandler(historicalController.removeLead));
+router.post('/leads/:id/restore', requirePermission('historical.view'), validate({ params: idParam }), asyncHandler(historicalController.restoreRemovedLead));
 
 router.get('/uploads', requirePermission('historical.view'), asyncHandler(historicalController.list));
 router.post('/uploads', requirePermission('historical.manage'), validate({ body: createUploadSchema }), asyncHandler(historicalController.create));

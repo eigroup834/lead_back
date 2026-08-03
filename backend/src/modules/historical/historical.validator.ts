@@ -89,6 +89,7 @@ export const listHistoricalLeadsQuery = z.object({
   assigneeId: z.string().uuid().optional(),
   eventName: z.string().trim().max(200).optional(),
   noEventName: z.coerce.boolean().optional(),
+  includeInactive: z.coerce.boolean().optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
   sortBy: z.enum(HISTORICAL_SORTABLE).default('eventYear'),
@@ -108,6 +109,10 @@ export const createHistoricalLeadSchema = z
     designation: z.string().trim().max(150).optional(),
     email: z.string().email().optional().or(z.literal('')),
     mobile: z.string().trim().max(40).optional(),
+    altEmail: z.string().trim().max(200).optional().or(z.literal(''))
+      .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: 'Enter a valid alternate email' }),
+    altMobile: z.string().trim().max(40).optional()
+      .refine((v) => !v || /^[+]?[\d\s-]{7,20}$/.test(v), { message: 'Alternate mobile must be 7-20 digits' }),
     city: z.string().trim().max(100).optional(),
     country: z.string().trim().max(100).optional(),
     eventName: z.string().trim().max(200).optional(),
@@ -123,12 +128,19 @@ const exhHistoryEntry = z.object({
   year: z.coerce.number().int().min(1900).max(2100),
   sqm_spo: z.string().trim().max(200),
 });
+const optionalPattern = (re: RegExp, message: string, max: number) =>
+  z.string().trim().max(max).nullable().optional()
+    .refine((v) => !v || re.test(v), { message });
+
 export const updateHistoricalLeadSchema = z.object({
-  company: z.string().trim().max(200).nullable().optional(),
-  name: z.string().trim().max(200).nullable().optional(),
+  company: z.string().trim().max(200).nullable().optional()
+    .refine((v) => !v || v.length >= 2, { message: 'Company must be at least 2 characters' }),
+  name: optionalPattern(/^[A-Za-z\s.'-]+$/, 'Name may only contain letters, spaces, . and -', 200),
   designation: z.string().trim().max(150).nullable().optional(),
-  email: z.string().trim().max(200).nullable().optional(),
-  mobile: z.string().trim().max(40).nullable().optional(),
+  email: optionalPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Enter a valid email', 200),
+  mobile: optionalPattern(/^[+]?[\d\s-]{7,20}$/, 'Mobile must be 7-20 digits', 40),
+  altEmail: optionalPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Enter a valid alternate email', 200),
+  altMobile: optionalPattern(/^[+]?[\d\s-]{7,20}$/, 'Alternate mobile must be 7-20 digits', 40),
   city: z.string().trim().max(100).nullable().optional(),
   country: z.string().trim().max(100).nullable().optional(),
   eventName: z.string().trim().max(200).nullable().optional(),

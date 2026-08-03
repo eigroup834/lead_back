@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography,
 } from '@mui/material';
 import { useHistoricalMatchesMutation, type HistoricalMatch } from '@/features/leads/leadsApi';
 
@@ -53,22 +53,25 @@ export function useHistoricalDuplicateGuard(verb = 'Assign') {
             : `${pending?.matches.length} of these companies already appear in the historical archive.`}
           {' '}Matching at {Math.round((pending?.threshold ?? 0.9) * 100)}% or above on company name.
         </Alert>
-        <Stack spacing={2}>
+        <Stack spacing={2.5}>
           {pending?.matches.map((m) => (
             <Box key={m.leadId}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>{m.company}</Typography>
-              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>{m.company}</Typography>
+              <Stack spacing={1}>
                 {m.matches.map((h) => (
-                  <li key={h.id}>
-                    <Typography variant="caption">
-                      {h.company}
-                      {h.eventYear ? ` · ${h.eventYear}` : ''}
-                      {h.assignedTo ? ` · was with ${h.assignedTo}` : ''}
-                      {' · '}{Math.round(h.score * 100)}% match
-                    </Typography>
-                  </li>
+                  <Box key={h.id} sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1.25 }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5, flexWrap: 'wrap' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{h.company || '—'}</Typography>
+                      <Chip size="small" color="warning" label={`${Math.round(h.score * 100)}% match`} />
+                      {h.eventYear && <Chip size="small" variant="outlined" label={h.eventYear} />}
+                    </Stack>
+                    <MatchField label="Contact" value={h.name} />
+                    <MatchField label="Email" value={h.email} />
+                    <MatchField label="Mobile" value={h.mobile} />
+                    <MatchField label="Was with" value={h.assignedTo} />
+                  </Box>
                 ))}
-              </Box>
+              </Stack>
             </Box>
           ))}
         </Stack>
@@ -85,4 +88,13 @@ export function useHistoricalDuplicateGuard(verb = 'Assign') {
   );
 
   return { guard, checking, dialog };
+}
+
+function MatchField({ label, value }: { label: string; value: string | null }) {
+  return (
+    <Stack direction="row" spacing={1} sx={{ py: 0.15 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ width: 68, flexShrink: 0 }}>{label}</Typography>
+      <Typography variant="caption" sx={{ wordBreak: 'break-word' }}>{value || '—'}</Typography>
+    </Stack>
+  );
 }

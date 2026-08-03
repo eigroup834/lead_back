@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Box, CircularProgress } from '@mui/material';
+import SplashScreen from '@/components/SplashScreen';
 import AppLayout from '@/layouts/AppLayout';
 import { landingPath } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -19,11 +19,7 @@ const RolesPage = lazy(() => import('@/pages/RolesPage'));
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 
-const Fallback = () => (
-  <Box sx={{ display: 'flex', justifyContent: 'center', p: 8 }}>
-    <CircularProgress />
-  </Box>
-);
+const Fallback = () => <SplashScreen />;
 
 function LandingRedirect() {
   const { level } = usePermissions();

@@ -12,6 +12,7 @@ import {
   type ExternalLeadType,
 } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
+import { DetailSkeleton } from '@/components/Skeletons';
 import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
 import {
   useGetLeadQuery, useChangeStatusMutation, useAddNoteMutation,
@@ -43,7 +44,7 @@ export default function LeadDetailsPage() {
   const [convertType, setConvertType] = useState<ExternalLeadType | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  if (isLoading) return <Box sx={{ p: 6, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isLoading) return <DetailSkeleton />;
   const lead = data?.data;
   if (!lead) return <Typography>Lead not found.</Typography>;
 
@@ -87,6 +88,8 @@ export default function LeadDetailsPage() {
               <Field label="Designation" value={lead.designation} />
               <Field label="Email" value={lead.email} />
               <Field label="Mobile" value={lead.mobile} />
+              <Field label="Alt. email" value={lead.altEmail} />
+              <Field label="Alt. mobile" value={lead.altMobile} />
               <Field label="Country" value={lead.country} />
               <Field label="City" value={lead.city} />
               <Field label="Source" value={lead.sourceChannel ? sourceChannelLabel(lead.sourceChannel) : lead.learnAbout} />
@@ -274,7 +277,8 @@ export default function LeadDetailsPage() {
         <DialogContent>
           <Typography variant="body2">
             “{lead.company || fullName}” will be moved out of the exhibitor pipeline into the external
-            {' '}({prettyLabel(convertType ?? 'VISITOR')}) list for the local CRM. It will no longer appear in Lead Management.
+            {' '}{prettyLabel(convertType ?? 'VISITOR')} panel and queued straight for sync. It will no longer appear
+            in Lead Management, and it skips Brochure Data because it is already queued.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -285,7 +289,7 @@ export default function LeadDetailsPage() {
               if (!convertType) return;
               try {
                 await convertExternal({ id, type: convertType }).unwrap();
-                setToast(`Moved to ${prettyLabel(convertType)} (external) list`);
+                setToast(`Queued for sync to the ${prettyLabel(convertType)} panel`);
                 // This page is only reachable from Assigned Leads, so go back
                 // there. Lead Management is levels 1–2 only and would 403.
                 setTimeout(() => navigate('/leads/assigned'), 800);

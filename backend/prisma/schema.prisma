@@ -308,6 +308,8 @@ model Lead {
   phone        String?
   email        String?
   mobile       String?
+  altEmail     String? @map("alt_email")
+  altMobile    String? @map("alt_mobile")
   website      String?
   learnAbout   String? @map("learn_about") // lead source
   remarks      String?
@@ -595,6 +597,8 @@ model HistoricalLead {
   designation        String?
   email              String?
   mobile             String?
+  altEmail           String?    @map("alt_email")
+  altMobile          String?    @map("alt_mobile")
   city               String?
   country            String?
   status             LeadStatus @default(CONVERTED)
@@ -614,9 +618,12 @@ model HistoricalLead {
   dateOfConfirmation DateTime?  @map("dateofconfirmation") @db.Date
   specialRemarks     String?    @map("specialremarks")
   exhHistory         Json       @default("[]") @map("exh_history") // [{ year, sqm_spo }]
+  // Soft delete: "Delete" marks a record inactive, it is never removed.
+  deletedAt          DateTime?  @map("deleted_at")
 
   edits HistoricalLeadEdit[]
 
+  @@index([deletedAt])
   @@index([eventYear])
   @@index([email])
   @@index([company])

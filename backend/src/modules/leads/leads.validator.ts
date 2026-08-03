@@ -7,7 +7,7 @@ export const LEAD_STATUSES = [
 
 export const SORTABLE = [
   'createdAt', 'createDate', 'company', 'status', 'firstName', 'email', 'mobile',
-  'country', 'sourceChannel', 'shellSpace', 'assignedUser',
+  'country', 'sourceChannel', 'shellSpace', 'remarks', 'assignedUser',
 ] as const;
 
 export const LEAD_SOURCES = [
@@ -49,6 +49,8 @@ export const updateLeadSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   mobile: z.string().optional(),
+  altEmail: z.string().optional(),
+  altMobile: z.string().optional(),
   country: z.string().optional(),
   city: z.string().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
@@ -71,6 +73,10 @@ export const createLeadSchema = z.object({
   phone: z.string().trim().max(40).optional(),
   email: z.string().trim().min(1, 'Email is required').email('Enter a valid email').max(200),
   mobile: z.string().trim().min(7, 'Mobile is required').max(40),
+  altEmail: z.string().trim().max(200).optional().or(z.literal(''))
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: 'Enter a valid alternate email' }),
+  altMobile: z.string().trim().max(40).optional().or(z.literal(''))
+    .refine((v) => !v || /^[+]?[\d\s-]{7,20}$/.test(v), { message: 'Alternate mobile must be 7-20 digits' }),
   website: z.string().trim().max(200).optional(),
   learnAbout: z.string().trim().max(200).optional(),
   remarks: z.string().trim().max(2000).optional(),
@@ -94,6 +100,8 @@ export const bulkImportRow = z.object({
   designation: z.string().trim().max(150).optional(),
   email: z.string().trim().max(200).optional(),
   mobile: z.string().trim().max(40).optional(),
+  altEmail: z.string().trim().max(200).optional(),
+  altMobile: z.string().trim().max(40).optional(),
   phone: z.string().trim().max(40).optional(),
   website: z.string().trim().max(200).optional(),
   address: z.string().trim().max(500).optional(),

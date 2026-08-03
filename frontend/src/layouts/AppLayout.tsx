@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet, useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   AppBar, Avatar, Box, Breadcrumbs, Chip, Divider, Drawer, IconButton, Link, List, ListItemButton,
@@ -19,6 +19,7 @@ import { logout } from '@/features/auth/authSlice';
 import { useLogoutMutation } from '@/features/auth/authApi';
 import { api } from '@/app/api';
 import NotificationsBell from '@/components/NotificationsBell';
+import { PageSkeleton } from '@/components/Skeletons';
 
 const FULL = 250;
 const MINI = 72;
@@ -239,7 +240,9 @@ export default function AppLayout() {
               : <Link key={to} component={RouterLink} to={to} underline="hover" color="inherit">{label}</Link>;
           })}
         </Breadcrumbs>
-        <Outlet />
+        <Suspense fallback={<PageSkeleton />}>
+          <Outlet />
+        </Suspense>
       </Box>
     </Box>
   );

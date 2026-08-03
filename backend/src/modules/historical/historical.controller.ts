@@ -78,6 +78,11 @@ export const historicalController = {
     return ok(res, result);
   },
 
+  async restoreRemovedLead(req: Request, res: Response) {
+    const result = await historicalService.restoreRemovedLead(req.user!, req.params.id);
+    return ok(res, result);
+  },
+
   async createLead(req: Request, res: Response) {
     const lead = await historicalService.createLead(req.body);
     return created(res, lead);

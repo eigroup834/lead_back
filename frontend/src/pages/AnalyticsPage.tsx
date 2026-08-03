@@ -25,6 +25,7 @@ import {
 import type { TeamPerf } from '@/features/types';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import { ChartSkeleton, SkeletonRows } from '@/components/Skeletons';
 
 type TeamSortKey = 'name' | 'assigned' | 'calls' | 'followupsDone' | 'converted' | 'conversionRate';
 const TEAM_SORT_VALUE: Record<TeamSortKey, (t: TeamPerf) => string | number> = {
@@ -98,7 +99,7 @@ export default function AnalyticsPage() {
       <Grid container spacing={2.5} sx={{ mt: 0.5 }}>
         <Grid item xs={12} md={7}>
           <ChartCard title="Team Performance — assigned vs converted" height={340}>
-            {teamLoading ? <Stack alignItems="center" justifyContent="center" sx={{ height: '100%' }}><CircularProgress /></Stack> : (
+            {teamLoading ? <ChartSkeleton height={300} /> : (
               <ResponsiveContainer>
                 <BarChart data={teamChart} margin={{ top: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
@@ -182,6 +183,7 @@ export default function AnalyticsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
+                  {teamLoading && teamRows.length === 0 && <SkeletonRows rows={6} columns={6} />}
                   {teamRows.map((t) => (
                     <TableRow key={t.userId} hover>
                       <TableCell>{t.name}</TableCell>

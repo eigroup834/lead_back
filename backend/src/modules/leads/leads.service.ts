@@ -14,7 +14,16 @@ import type {
 export interface HistoricalMatch {
   leadId: string;
   company: string;
-  matches: Array<{ id: string; company: string | null; eventYear: number | null; assignedTo: string | null; score: number }>;
+  matches: Array<{
+    id: string;
+    company: string | null;
+    name: string | null;
+    email: string | null;
+    mobile: string | null;
+    eventYear: number | null;
+    assignedTo: string | null;
+    score: number;
+  }>;
 }
 import type { LeadStatus, ExternalLeadCategory } from '@prisma/client';
 
@@ -169,11 +178,15 @@ export const leadsService = {
       await tx.$executeRaw`SELECT set_limit(${env.HISTORICAL_MATCH_THRESHOLD}::real)`;
       return tx.$queryRaw<Array<{
         leadId: string; id: string; company: string | null;
+        name: string | null; email: string | null; mobile: string | null;
         eventYear: number | null; assignedTo: string | null; score: number;
       }>>`
         SELECT x."lead_id" AS "leadId",
                h."id",
                h."company",
+               h."name",
+               h."email",
+               h."mobile",
                h."event_year" AS "eventYear",
                COALESCE(
                  NULLIF(BTRIM(CONCAT_WS(' ', u."first_name", u."last_name")), ''),
@@ -184,10 +197,11 @@ export const leadsService = {
         FROM (VALUES ${pairs}) AS x("lead_id", "company")
         JOIN "historical_leads" h ON h."company" % x."company"
         LEFT JOIN "users" u ON u."id" = h."assigned_user_id"
+        WHERE h."deleted_at" IS NULL
         ORDER BY x."lead_id", "score" DESC
         LIMIT 2000
       `;
-    });
+    }, { timeout: 30_000, maxWait: 15_000 });
 
     const byLead = new Map<string, HistoricalMatch>();
     for (const r of rows) {
@@ -197,8 +211,8 @@ export const leadsService = {
         ?? { leadId: r.leadId, company: lead.company as string, matches: [] };
       if (entry.matches.length < 5) {
         entry.matches.push({
-          id: r.id, company: r.company, eventYear: r.eventYear,
-          assignedTo: r.assignedTo, score: Number(r.score),
+          id: r.id, company: r.company, name: r.name, email: r.email, mobile: r.mobile,
+          eventYear: r.eventYear, assignedTo: r.assignedTo, score: Number(r.score),
         });
       }
       byLead.set(r.leadId, entry);
@@ -268,6 +282,7 @@ export const leadsService = {
           createDate: lead.createDate,
           source: lead.source,
           sourceChannel: null,
+          syncStatus: 'PENDING',
           raw: JSON.parse(JSON.stringify(lead)) as object,
         },
       });

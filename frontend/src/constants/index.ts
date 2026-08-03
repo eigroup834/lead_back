@@ -98,6 +98,10 @@ export const LEAD_SOURCE_CHANNELS = [
   { value: 'META', label: 'Meta' },
 ] as const;
 
+export const NAME_RE = /^[A-Za-z\s.'-]+$/;
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const MOBILE_RE = /^[+]?[\d\s-]{7,20}$/;
+
 export function prettyLabel(v: string): string {
   return v.toLowerCase().split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }

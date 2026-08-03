@@ -12,6 +12,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import StatCard from '@/components/StatCard';
 import PageHeader from '@/components/PageHeader';
 import ChartCard from '@/components/ChartCard';
+import { ChartSkeleton } from '@/components/Skeletons';
 import {
   useSummaryQuery, useFunnelQuery, useDailyTrendQuery,
 } from '@/features/dashboard/dashboardApi';
@@ -19,8 +20,8 @@ import { CHART_COLORS } from '@/constants';
 
 export default function DashboardPage() {
   const { data: summary, isLoading } = useSummaryQuery();
-  const { data: funnel } = useFunnelQuery();
-  const { data: daily } = useDailyTrendQuery({ days: 30 });
+  const { data: funnel, isLoading: funnelLoading } = useFunnelQuery();
+  const { data: daily, isLoading: dailyLoading } = useDailyTrendQuery({ days: 30 });
 
   const s = summary?.data;
 
@@ -40,6 +41,7 @@ export default function DashboardPage() {
       <Grid container spacing={2.5} sx={{ mt: 0.5 }}>
         <Grid item xs={12} md={7}>
           <ChartCard title="New Leads — last 30 days">
+            {dailyLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer>
               <LineChart data={daily?.data ?? []}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
@@ -49,11 +51,13 @@ export default function DashboardPage() {
                 <Line type="monotone" dataKey="count" stroke="#4f46e5" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </ChartCard>
         </Grid>
 
         <Grid item xs={12} md={5}>
           <ChartCard title="Lead Funnel by Status">
+            {funnelLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer>
               <PieChart>
                 <Pie data={funnel?.data ?? []} dataKey="count" nameKey="status" innerRadius={55} outerRadius={95} paddingAngle={2}>
@@ -63,6 +67,7 @@ export default function DashboardPage() {
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
+            )}
           </ChartCard>
         </Grid>
       </Grid>

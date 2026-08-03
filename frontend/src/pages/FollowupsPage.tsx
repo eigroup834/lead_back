@@ -21,6 +21,7 @@ import {
 import { useChangeStatusMutation } from '@/features/leads/leadsApi';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import { SkeletonRows } from '@/components/Skeletons';
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const isOverdue = (iso: string) => new Date(iso) < startOfToday();
@@ -162,6 +163,9 @@ export default function FollowupsPage() {
               </TableRow>
             </TableHead>
             <TableBody>
+              {isFetching && rows.length === 0 && (
+                <SkeletonRows rows={8} columns={isManager ? 9 : 8} />
+              )}
               {rows.map((f) => {
                 const lead = f.lead;
                 const overdue = isOverdue(f.followupDate);

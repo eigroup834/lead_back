@@ -13,6 +13,8 @@ export interface Lead {
   lastName: string | null;
   email: string | null;
   mobile: string | null;
+  altEmail: string | null;
+  altMobile: string | null;
   phone: string | null;
   country: string | null;
   city: string | null;
@@ -26,6 +28,7 @@ export interface Lead {
   assignedUser?: { id: string; firstName: string; lastName: string } | null;
   shellSpace: string | null;
   rawSpace: string | null;
+  remarks: string | null;
   createDate: string | null;
   createdAt: string;
 }
@@ -42,7 +45,6 @@ export interface LeadDetail extends Lead {
   address: string | null;
   website: string | null;
   learnAbout: string | null;
-  remarks: string | null;
   statusHistory: Array<{ id: string; fromStatus: LeadStatus | null; toStatus: LeadStatus; reason: string | null; createdAt: string; changedBy?: { firstName: string; lastName: string } }>;
   assignments: Array<{ id: string; type: string; createdAt: string; assignedTo?: { firstName: string; lastName: string }; assignedBy?: { firstName: string; lastName: string } }>;
   notes: Array<{ id: string; body: string; createdAt: string; author?: { firstName: string; lastName: string } }>;

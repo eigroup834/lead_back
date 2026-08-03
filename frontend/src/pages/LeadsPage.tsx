@@ -18,6 +18,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import StatusChip from '@/components/StatusChip';
 import PageHeader from '@/components/PageHeader';
+import { SkeletonRows } from '@/components/Skeletons';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
 import {
@@ -44,10 +45,13 @@ const ALL_COLUMNS = [
   { key: 'mobile', label: 'Mobile', sort: 'mobile' },
   { key: 'country', label: 'Country', sort: 'country' },
   { key: 'shellSpace', label: 'Shell Space', sort: 'shellSpace' },
+  { key: 'remarks', label: 'Interest', sort: 'remarks' },
   { key: 'source', label: 'Source', sort: 'sourceChannel' },
   { key: 'status', label: 'Status', sort: 'status' },
   { key: 'assignedUser', label: 'Assigned To', sort: 'assignedUser' },
 ] as const;
+
+const BULK_ASSIGN_ENABLED = false;
 
 type LeadSortKey = (typeof ALL_COLUMNS)[number]['sort'] | 'createdAt';
 
@@ -75,7 +79,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const { sort, toggle: toggleSort } = useSort<LeadSortKey>({ by: 'createdAt', dir: 'desc' }, () => setPage(0));
 
   const [assignOpen, setAssignOpen] = useState(false);
-  const [assignMode, setAssignMode] = useState<'single' | 'bulk'>('bulk');
+  const [assignMode, setAssignMode] = useState<'single' | 'bulk'>(BULK_ASSIGN_ENABLED ? 'bulk' : 'single');
   const [assignLeadId, setAssignLeadId] = useState<string | null>(null);
   const [assignTo, setAssignTo] = useState('');
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
@@ -110,7 +114,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const canAssignAction = assignedOnly ? isSuperAdmin : canAssign;
   const canEdit = has('lead.edit');
   const canArchive = has('lead.edit') && !assignedOnly;
-  const canSelect = canAssign || canArchive;
+  const canSelect = (BULK_ASSIGN_ENABLED && canAssign) || canArchive;
   const showActions = canAssign || canEdit;
   const assignVerb = assignedOnly ? 'Reassign' : 'Assign';
 
@@ -218,7 +222,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
           : 'New leads from the website and manual entry, ready to be assigned.'}
         actions={(
           <>
-            {canAssignAction && selectedIds.length > 0 && (
+            {BULK_ASSIGN_ENABLED && canAssignAction && selectedIds.length > 0 && (
               <Button startIcon={<AssignmentIndIcon />} variant="contained" onClick={openBulkAssign}>
                 {assignVerb} ({selectedIds.length})
               </Button>
@@ -376,6 +380,9 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
                   )}
                 </TableRow>
               ))}
+              {isFetching && leads.length === 0 && (
+                <SkeletonRows rows={rowsPerPage > 10 ? 10 : rowsPerPage} columns={visibleCols.length + (canSelect ? 1 : 0) + (showActions ? 1 : 0)} />
+              )}
               {!isFetching && leads.length === 0 && (
                 <TableRow><TableCell colSpan={visibleCols.length + (canSelect ? 1 : 0) + (showActions ? 1 : 0)} align="center" sx={{ py: 6, color: 'text.secondary' }}>No leads found</TableCell></TableRow>
               )}
@@ -415,8 +422,9 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
         <DialogContent>
           <Typography variant="body2">
             “{convertTarget?.lead.company || [convertTarget?.lead.firstName, convertTarget?.lead.lastName].filter(Boolean).join(' ') || 'This lead'}”
-            {' '}will be moved out of the exhibitor pipeline into the external ({prettyLabel(convertTarget?.type ?? 'VISITOR')}) list for the local CRM.
-            It will no longer appear in Lead Management.
+            {' '}will be moved out of the exhibitor pipeline and queued straight for sync to the
+            {' '}{prettyLabel(convertTarget?.type ?? 'VISITOR')} panel. It will no longer appear in Lead Management,
+            and it skips Brochure Data because it is already queued.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -427,7 +435,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
               if (!convertTarget) return;
               try {
                 await convertExternal({ id: convertTarget.lead.id, type: convertTarget.type }).unwrap();
-                setToast({ msg: `Moved to ${prettyLabel(convertTarget.type)} (external) list`, sev: 'success' });
+                setToast({ msg: `Queued for sync to the ${prettyLabel(convertTarget.type)} panel`, sev: 'success' });
               } catch {
                 setToast({ msg: 'Conversion failed', sev: 'error' });
               } finally {
@@ -532,6 +540,9 @@ function renderCell(key: string, l: Lead) {
   switch (key) {
     case 'date': return leadDateCell(l);
     case 'name': return [l.firstName, l.lastName].filter(Boolean).join(' ') || '—';
+    case 'remarks': return l.remarks
+      ? <Tooltip title={l.remarks}><Typography variant="body2" noWrap sx={{ maxWidth: 220 }}>{l.remarks}</Typography></Tooltip>
+      : '—';
     case 'status': return <StatusChip status={l.status} />;
     case 'assignedUser': return l.assignedUser ? `${l.assignedUser.firstName} ${l.assignedUser.lastName}` : <Chip label="Unassigned" size="small" variant="outlined" />;
     case 'source': {

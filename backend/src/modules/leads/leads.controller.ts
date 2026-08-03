@@ -12,6 +12,8 @@ const EXPORT_COLUMNS = [
   { header: 'Designation', key: 'designation', width: 20 },
   { header: 'Email', key: 'email', width: 26 },
   { header: 'Mobile', key: 'mobile', width: 16 },
+  { header: 'Alt Email', key: 'altEmail', width: 26 },
+  { header: 'Alt Mobile', key: 'altMobile', width: 16 },
   { header: 'Phone', key: 'phone', width: 16 },
   { header: 'City', key: 'city', width: 14 },
   { header: 'State', key: 'state', width: 14 },

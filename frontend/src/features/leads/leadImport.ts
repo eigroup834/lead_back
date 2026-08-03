@@ -15,6 +15,8 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
   { key: 'designation', header: 'Designation', aliases: ['job title'] },
   { key: 'email', header: 'Email' },
   { key: 'mobile', header: 'Mobile' },
+  { key: 'altEmail', header: 'Alternate Email', aliases: ['alt email', 'secondary email', 'email 2', 'other email'] },
+  { key: 'altMobile', header: 'Alternate Mobile', aliases: ['alt mobile', 'secondary mobile', 'mobile 2', 'other mobile'] },
   { key: 'phone', header: 'Phone', aliases: ['telephone', 'landline'] },
   { key: 'website', header: 'Website' },
   { key: 'address', header: 'Address' },
@@ -62,6 +64,7 @@ export function buildTemplateWorkbook(): XLSX.WorkBook {
     {
       Company: 'Acme Exhibits Pvt Ltd', Title: 'Mr', 'First Name': 'Ravi', 'Last Name': 'Sharma',
       Designation: 'Marketing Head', Email: 'ravi.sharma@acme-example.com', Mobile: '+91 98200 11223',
+      'Alternate Email': 'ravi@acme-example.com', 'Alternate Mobile': '+91 98200 44556',
       Phone: '022 4000 1122', Website: 'www.acme-example.com', Address: '12 Industrial Estate',
       City: 'Mumbai', State: 'Maharashtra', 'Zip Code': '400001', Country: 'India',
       'Shell Space': '18 sqm', 'Raw Space': '', 'How They Heard About Us': 'Website',
@@ -70,6 +73,7 @@ export function buildTemplateWorkbook(): XLSX.WorkBook {
     {
       Company: 'Bharat Displays', Title: 'Ms', 'First Name': 'Anita', 'Last Name': 'Desai',
       Designation: 'Director', Email: 'anita@bharat-example.com', Mobile: '+91 99100 44556',
+      'Alternate Email': '', 'Alternate Mobile': '',
       Phone: '', Website: '', Address: '', City: 'Delhi', State: 'Delhi', 'Zip Code': '110001',
       Country: 'India', 'Shell Space': '', 'Raw Space': '36 sqm',
       'How They Heard About Us': 'Referral', 'Event Name': 'India Expo 2026', Remarks: '', Priority: 'MEDIUM',
@@ -153,6 +157,10 @@ export function parseWorkbook(data: ArrayBuffer): ParseResult {
     }
     if (values.email && !EMAIL_RE.test(values.email)) {
       rows.push({ row: rowNo, values, error: `"${values.email}" is not a valid email` });
+      continue;
+    }
+    if (values.altEmail && !EMAIL_RE.test(values.altEmail)) {
+      rows.push({ row: rowNo, values, error: `"${values.altEmail}" is not a valid alternate email` });
       continue;
     }
     rows.push({ row: rowNo, values });

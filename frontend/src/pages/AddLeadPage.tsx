@@ -10,7 +10,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LeadExcelImport from '@/components/LeadExcelImport';
 import PageHeader from '@/components/PageHeader';
 import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
-import { LEAD_SOURCES, PRIORITIES, leadsListPath, prettyLabel } from '@/constants';
+import { LEAD_SOURCES, PRIORITIES, NAME_RE, EMAIL_RE, MOBILE_RE, leadsListPath, prettyLabel } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
 import { useCreateHistoricalLeadMutation } from '@/features/historical/historicalApi';
@@ -19,16 +19,13 @@ import { useListUsersQuery } from '@/features/adminApi';
 const empty = {
   source: 'MANUAL', leadType: 'EXHIBITION', status: 'NEW', priority: 'MEDIUM',
   title: '', firstName: '', lastName: '', designation: '', email: '', mobile: '',
+  altEmail: '', altMobile: '',
   company: '', shellSpace: '', rawSpace: '', website: '', learnAbout: '',
   address: '', city: '', state: '', zipCode: '', country: '',
   remarks: '',
 };
 
 type Form = typeof empty;
-
-const NAME_RE = /^[A-Za-z\s.'-]+$/;             
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MOBILE_RE = /^[+]?[\d\s-]{7,20}$/;         
 
 function validate(form: Form, requireAll: boolean) {
   const required = (v: string) => (requireAll && !v.trim() ? 'Required' : '');
@@ -39,6 +36,8 @@ function validate(form: Form, requireAll: boolean) {
     lastName: form.lastName && !NAME_RE.test(form.lastName) ? 'Letters only' : '',
     email: form.email ? (!EMAIL_RE.test(form.email) ? 'Enter a valid email' : '') : required(form.email),
     mobile: form.mobile ? (!MOBILE_RE.test(form.mobile) ? 'Digits only' : '') : required(form.mobile),
+    altEmail: form.altEmail && !EMAIL_RE.test(form.altEmail) ? 'Enter a valid email' : '',
+    altMobile: form.altMobile && !MOBILE_RE.test(form.altMobile) ? 'Digits only' : '',
   };
 }
 
@@ -95,6 +94,8 @@ export default function AddLeadPage() {
         designation: form.designation || undefined,
         email: form.email || undefined,
         mobile: form.mobile || undefined,
+        altEmail: form.altEmail || undefined,
+        altMobile: form.altMobile || undefined,
         city: form.city || undefined,
         country: form.country || undefined,
         assignedUserId: assignTo || undefined,
@@ -238,6 +239,8 @@ export default function AddLeadPage() {
               <Grid item xs={12} sm={4}><TextField size="small" fullWidth required={reqd} label="Designation" value={form.designation} onChange={set('designation')} onBlur={markTouched('designation')} error={!!shownError('designation')} helperText={shownError('designation')} /></Grid>
               <Grid item xs={12} sm={4}><TextField size="small" fullWidth required={reqd} label="Email" type="email" value={form.email} onChange={set('email')} onBlur={markTouched('email')} error={!!shownError('email')} helperText={shownError('email')} /></Grid>
               <Grid item xs={12} sm={4}><TextField size="small" fullWidth required={reqd} label="Mobile" value={form.mobile} onChange={set('mobile')} onBlur={markTouched('mobile')} error={!!shownError('mobile')} helperText={shownError('mobile')} /></Grid>
+              <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Alternate email" value={form.altEmail} onChange={set('altEmail')} onBlur={markTouched('altEmail')} error={!!shownError('altEmail')} helperText={shownError('altEmail')} /></Grid>
+              <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Alternate mobile" value={form.altMobile} onChange={set('altMobile')} onBlur={markTouched('altMobile')} error={!!shownError('altMobile')} helperText={shownError('altMobile')} /></Grid>
             </Grid>
           </CardContent>
         </Card>

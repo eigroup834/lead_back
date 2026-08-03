@@ -14,6 +14,8 @@ export interface HistoricalLead {
   name: string | null;
   email: string | null;
   mobile: string | null;
+  altEmail: string | null;
+  altMobile: string | null;
   country: string | null;
   city: string | null;
   designation: string | null;
@@ -40,7 +42,8 @@ export interface HistoricalListParams {
   year?: number;
   assigneeId?: string;
   eventName?: string;
-  noEventName?: boolean; 
+  noEventName?: boolean;
+  includeInactive?: boolean;
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
 }
@@ -85,8 +88,13 @@ export const historicalApi = api.injectEndpoints({
       query: (id) => ({ url: `/historical/leads/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Historical'],
     }),
+    restoreRemovedHistoricalLead: build.mutation<ApiEnvelope<{ restored: boolean }>, string>({
+      query: (id) => ({ url: `/historical/leads/${id}/restore`, method: 'POST' }),
+      invalidatesTags: ['Historical'],
+    }),
     createHistoricalLead: build.mutation<ApiEnvelope<HistoricalLead>, {
       company?: string; name?: string; designation?: string; email?: string; mobile?: string;
+      altEmail?: string; altMobile?: string;
       city?: string; country?: string; eventName?: string; eventYear?: number; assignedUserId?: string;
     }>({
       query: (body) => ({ url: '/historical/leads', method: 'POST', body }),
@@ -95,7 +103,8 @@ export const historicalApi = api.injectEndpoints({
     updateHistoricalLead: build.mutation<ApiEnvelope<HistoricalLead>, {
       id: string;
       company?: string | null; name?: string | null; designation?: string | null;
-      email?: string | null; mobile?: string | null; city?: string | null; country?: string | null;
+      email?: string | null; mobile?: string | null; altEmail?: string | null; altMobile?: string | null;
+      city?: string | null; country?: string | null;
       eventName?: string | null; eventYear?: number | null; industry?: string | null;
       branchOffice?: string | null; remark?: string | null; specialRemarks?: string | null;
       spaceSqm?: string | null; assignedUserId?: string | null; exhHistory?: ExhHistoryEntry[];
@@ -113,6 +122,7 @@ export const {
   useHistoricalLeadHistoryQuery,
   useRestoreHistoricalLeadsMutation,
   useDeleteHistoricalLeadMutation,
+  useRestoreRemovedHistoricalLeadMutation,
   useCreateHistoricalLeadMutation,
   useUpdateHistoricalLeadMutation,
 } = historicalApi;

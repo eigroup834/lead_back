@@ -24,6 +24,7 @@ import {
 import { useListUsersQuery } from '@/features/adminApi';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import { SkeletonRows } from '@/components/Skeletons';
 
 type ExternalSortKey =
   | 'createdAt' | 'createDate' | 'company' | 'category' | 'email' | 'mobile'
@@ -253,6 +254,9 @@ export default function OtherLeadsPage() {
                   </TableRow>
                 );
               })}
+              {isFetching && rows.length === 0 && (
+                <SkeletonRows rows={rowsPerPage > 10 ? 10 : rowsPerPage} columns={canEdit ? 9 : 7} />
+              )}
               {!isFetching && rows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={canEdit ? 9 : 7} align="center" sx={{ py: 6, color: 'text.secondary' }}>No brochure leads found</TableCell>

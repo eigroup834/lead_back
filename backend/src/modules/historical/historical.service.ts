@@ -27,7 +27,7 @@ function historicalScope(user: AuthUser): Prisma.HistoricalLeadWhereInput {
 }
 
 async function assertEditable(user: AuthUser, id: string) {
-  const record = await prisma.historicalLead.findUnique({ where: { id } });
+  const record = await prisma.historicalLead.findFirst({ where: { id, deletedAt: null } });
   if (!record) throw AppError.notFound('Historical lead not found');
   if (user.level !== 1 && record.assignedUserId !== user.id) {
     throw AppError.forbidden('You can only change historical leads assigned to you');
@@ -37,7 +37,8 @@ async function assertEditable(user: AuthUser, id: string) {
 
 const AUDITED_FIELDS = {
   company: 'Company', name: 'Contact name', designation: 'Designation', email: 'Email',
-  mobile: 'Mobile', city: 'City', country: 'Country', eventName: 'Event name',
+  mobile: 'Mobile', altEmail: 'Alternate email', altMobile: 'Alternate mobile',
+  city: 'City', country: 'Country', eventName: 'Event name',
   eventYear: 'Event year', industry: 'Industry', branchOffice: 'Branch office',
   remark: 'Remark', specialRemarks: 'Special remarks', spaceSqm: 'Space (sqm)',
 } as const;
@@ -243,7 +244,11 @@ export const historicalService = {
   },
 
   async listLeads(user: AuthUser, q: ListHistoricalLeadsQuery) {
-    const where: Prisma.HistoricalLeadWhereInput = { restoredLeadId: null, ...historicalScope(user) };
+    const where: Prisma.HistoricalLeadWhereInput = {
+      restoredLeadId: null,
+      deletedAt: q.includeInactive ? { not: null } : null,
+      ...historicalScope(user),
+    };
     if (user.level === 1 && q.assigneeId) where.assignedUserId = q.assigneeId;
     if (q.year) where.eventYear = q.year;
     if (q.noEventName) where.eventName = null;
@@ -277,7 +282,7 @@ export const historicalService = {
   async years() {
     const groups = await prisma.historicalLead.groupBy({
       by: ['eventYear'],
-      where: { eventYear: { not: null } },
+      where: { eventYear: { not: null }, deletedAt: null },
       _count: { _all: true },
       orderBy: { eventYear: 'desc' },
     });
@@ -287,7 +292,7 @@ export const historicalService = {
   async events(user: AuthUser) {
     const groups = await prisma.historicalLead.groupBy({
       by: ['eventName'],
-      where: { restoredLeadId: null, ...historicalScope(user) },
+      where: { restoredLeadId: null, deletedAt: null, ...historicalScope(user) },
       _count: { _all: true },
       orderBy: { eventName: 'asc' },
     });
@@ -348,8 +353,18 @@ export const historicalService = {
 
   async removeLead(user: AuthUser, id: string) {
     await assertEditable(user, id);
-    await prisma.historicalLead.delete({ where: { id } });
+    await prisma.historicalLead.update({ where: { id }, data: { deletedAt: new Date() } });
     return { deleted: true };
+  },
+
+  async restoreRemovedLead(user: AuthUser, id: string) {
+    const record = await prisma.historicalLead.findUnique({ where: { id } });
+    if (!record) throw AppError.notFound('Historical lead not found');
+    if (user.level !== 1 && record.assignedUserId !== user.id) {
+      throw AppError.forbidden('You can only change historical leads assigned to you');
+    }
+    await prisma.historicalLead.update({ where: { id }, data: { deletedAt: null } });
+    return { restored: true };
   },
 
   async createLead(input: CreateHistoricalLeadInput) {
@@ -369,6 +384,8 @@ export const historicalService = {
         designation: input.designation ?? null,
         email: input.email || null,
         mobile: input.mobile ?? null,
+        altEmail: input.altEmail || null,
+        altMobile: input.altMobile ?? null,
         city: input.city ?? null,
         country: input.country ?? null,
         eventName: input.eventName ?? null,
