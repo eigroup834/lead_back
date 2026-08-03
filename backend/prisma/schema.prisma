@@ -634,6 +634,24 @@ model HistoricalLead {
 
 // Audit trail for historical-lead edits. Anyone who can see a record may edit it,
 // so every change is recorded: who, when, and the before/after of each field.
+model MailLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  kind      String   @default("OTHER")
+  entityId  String?  @map("entity_id")
+  recipient String
+  cc        String[] @default([])
+  subject   String
+  status    String
+  messageId String?  @map("message_id")
+  error     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([kind, createdAt])
+  @@index([entityId])
+  @@index([status])
+  @@map("mail_log")
+}
+
 model HistoricalLeadEdit {
   id               String   @id @default(uuid()) @db.Uuid
   historicalLeadId String   @map("historical_lead_id") @db.Uuid

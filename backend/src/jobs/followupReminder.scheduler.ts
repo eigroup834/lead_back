@@ -2,6 +2,7 @@ import { prisma } from '@config/prisma';
 import { env } from '@config/env';
 import { logger } from '@config/logger';
 import { smsService } from '@services/sms.service';
+import { mailService } from '@services/mail.service';
 import { istDateTimeToUtc } from '@utils/ist';
 
 let running = false;
@@ -13,6 +14,41 @@ const MAX_PER_RUN = 500;
 function buildMessage(params: { time: string; person: string; company: string }): string {
   const { time, person, company } = params;
   return `Dear Team Member ,You have a follow-up scheduled today at ${time} with ${person} from ${company} Log in to the lead crm portal for more details. @Exhibitions India`;
+}
+
+const esc = (v: string) =>
+  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function buildEmail(params: { time: string; person: string; company: string; assignee: string; leadId?: string; note?: string | null }) {
+  const { time, person, company, assignee, leadId, note } = params;
+  const url = leadId ? `${env.APP_BASE_URL.replace(/\/$/, '')}/leads/${leadId}` : '';
+  const rows: Array<[string, string]> = [
+    ['Company', company],
+    ['Contact', person],
+    ['Scheduled for', `Today at ${time} (IST)`],
+  ];
+  if (note) rows.push(['Note', note]);
+
+  const text = [
+    `${assignee}, you have a follow-up scheduled today at ${time} with ${person} from ${company}.`,
+    '',
+    ...rows.map(([k, v]) => `${k}: ${v}`),
+    ...(url ? ['', `Open the lead: ${url}`] : []),
+  ].join('\n');
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">
+      <p><strong>${esc(assignee)}</strong>, you have a follow-up scheduled today at <strong>${esc(time)}</strong>.</p>
+      <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;margin:12px 0">
+        ${rows.map(([k, v]) =>
+          `<tr><td style="border:1px solid #e2e8f0;background:#f8fafc"><strong>${esc(k)}</strong></td>` +
+          `<td style="border:1px solid #e2e8f0">${esc(v)}</td></tr>`).join('')}
+      </table>
+      ${url ? `<p><a href="${esc(url)}" style="background:#4f46e5;color:#fff;padding:9px 16px;border-radius:6px;text-decoration:none">Open the lead</a></p>` : ''}
+      <p style="color:#64748b;font-size:12px">Sent by ${esc(env.APP_NAME)}.</p>
+    </div>`;
+
+  return { subject: `Follow-up today at ${time} — ${company}`, text, html };
 }
 
 export async function runFollowupRemindersNow(
@@ -39,10 +75,21 @@ export async function runFollowupRemindersNow(
       take: MAX_PER_RUN,
       orderBy: { followupDate: 'asc' },
       include: {
-        assignee: { select: { id: true, firstName: true, phone: true } },
-        lead: { select: { company: true, firstName: true, lastName: true } },
+        assignee: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        lead: { select: { id: true, company: true, firstName: true, lastName: true } },
       },
     });
+
+    if (!mailService.isConfigured()) {
+      const waiting = candidates.length;
+      if (waiting) {
+        logger.warn(
+          `[followup-reminder] ${trigger}: mail not configured — ${waiting} reminder(s) waiting, nothing sent or marked. ` +
+            'Set MAIL_ENABLED=true and MAIL_HOST/USER/PASSWORD to deliver them.',
+        );
+      }
+      return { sent: 0, skipped: waiting, failed: 0 };
+    }
 
     let sent = 0;
     let skipped = 0;
@@ -55,19 +102,31 @@ export async function runFollowupRemindersNow(
       const dayDue = !fu.reminderDaySentAt && now.getTime() >= dayAt.getTime() && now.getTime() < dueAt.getTime();
       if (!dayDue) continue;
 
-      if (!fu.assignee?.phone) {
+      if (!fu.assignee?.email) {
         skipped += 1;
-        logger.warn(`[followup-reminder] no phone for assignee ${fu.assigneeId} (follow-up ${fu.id})`);
+        logger.warn(`[followup-reminder] no email for assignee ${fu.assigneeId} (follow-up ${fu.id})`);
         continue;
       }
 
       const person = [fu.lead?.firstName, fu.lead?.lastName].filter(Boolean).join(' ') || 'your contact';
       const company = fu.lead?.company || 'the company';
       const time = fu.followupTime ?? env.FOLLOWUP_REMINDER_DEFAULT_TIME;
+      const assigneeName = `${fu.assignee.firstName} ${fu.assignee.lastName ?? ''}`.trim();
 
-      const result = await smsService.send(fu.assignee.phone, buildMessage({ time, person, company }));
-      if (result.ok) {
+      const mail = buildEmail({ time, person, company, assignee: assigneeName, leadId: fu.lead?.id, note: fu.note });
+      const result = await mailService.send({
+        to: fu.assignee.email, ...mail,
+        kind: 'FOLLOWUP_REMINDER', entityId: fu.id,
+      });
+
+      if (smsService.configured && fu.assignee.phone) {
+        await smsService.send(fu.assignee.phone, buildMessage({ time, person, company }));
+      }
+
+      if (result.ok && !result.dryRun) {
         await prisma.leadFollowup.update({ where: { id: fu.id }, data: { reminderDaySentAt: new Date() } });
+        sent += 1;
+      } else if (result.ok) {
         sent += 1;
       } else {
         failed += 1;
@@ -77,8 +136,8 @@ export async function runFollowupRemindersNow(
 
     if (sent || failed || skipped) {
       logger.info(
-        `[followup-reminder] ${trigger}: sent ${sent}, skipped ${skipped} (no phone), failed ${failed}` +
-          `${smsService.configured ? '' : ' [dry-run: SMS not configured]'}`,
+        `[followup-reminder] ${trigger}: sent ${sent}, skipped ${skipped} (no email), failed ${failed}` +
+          `${mailService.isConfigured() ? '' : ' [dry-run: MAIL_* not configured]'}`,
       );
     }
     return { sent, skipped, failed };
@@ -102,9 +161,10 @@ export function startFollowupReminderScheduler(): void {
   timer.unref?.();
 
   logger.info(
-    `⏰ Follow-up SMS reminder scheduler started — every ${Math.round(env.FOLLOWUP_REMINDER_INTERVAL_MS / 1000)}s, ` +
-      `${env.FOLLOWUP_REMINDER_LEAD_MINUTES}min before due (IST)` +
-      `${smsService.configured ? '' : ' [dry-run: set SMS_* env to go live]'}`,
+    `⏰ Follow-up email reminder scheduler started — every ${Math.round(env.FOLLOWUP_REMINDER_INTERVAL_MS / 1000)}s ` +
+      `(IST day reminder at ${env.FOLLOWUP_DAY_REMINDER_TIME})` +
+      `${mailService.isConfigured() ? '' : ' [dry-run: set MAIL_* env to go live]'}` +
+      `${smsService.configured ? ' + SMS enabled' : ''}`,
   );
 }
 

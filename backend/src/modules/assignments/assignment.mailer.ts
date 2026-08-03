@@ -93,7 +93,10 @@ export function notifyAssignments(leadIds: string[], assignToId: string, assigne
       let sent = 0;
       for (const lead of leads) {
         const { subject, text, html } = compose(lead, assigneeName, assignedByName);
-        const res = await mailService.send({ to: assignee.email, cc, subject, text, html });
+        const res = await mailService.send({
+          to: assignee.email, cc, subject, text, html,
+          kind: 'ASSIGNMENT', entityId: lead.id,
+        });
         if (res.ok) sent += 1;
       }
       logger.info(`[assignment-mail] ${sent}/${leads.length} email(s) dispatched to ${assignee.email} (cc ${cc.length})`);

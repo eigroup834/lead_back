@@ -58,7 +58,7 @@ export const dashboardService = {
         prisma.lead.groupBy({ by: ['country'], where: { deletedAt: null, country: { not: null } }, _count: { _all: true }, orderBy: { _count: { id: 'desc' } } }),
         prisma.team.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
         prisma.user.findMany({
-          where: { deletedAt: null },
+          where: { deletedAt: null, status: 'ACTIVE' },
           select: { id: true, firstName: true, lastName: true },
           orderBy: [{ firstName: 'asc' }],
         }),
@@ -171,6 +171,7 @@ export const dashboardService = {
       const users = await prisma.user.findMany({
         where: {
           deletedAt: null,
+          status: 'ACTIVE',
           ...(f.userId ? { id: f.userId } : f.teamId ? { teamId: f.teamId } : {}),
         },
         select: { id: true, firstName: true, lastName: true },

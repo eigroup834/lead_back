@@ -1,6 +1,10 @@
 import nodemailer, { type Transporter } from 'nodemailer';
+import { prisma } from '@config/prisma';
 import { env } from '@config/env';
 import { logger } from '@config/logger';
+
+export type MailKind = 'ASSIGNMENT' | 'FOLLOWUP_REMINDER' | 'OTHER';
+export type MailStatus = 'SENT' | 'FAILED' | 'DRY_RUN';
 
 export interface MailResult {
   ok: boolean;
@@ -15,6 +19,8 @@ export interface MailMessage {
   subject: string;
   html: string;
   text: string;
+  kind?: MailKind;
+  entityId?: string;
 }
 
 function isConfigured(): boolean {
@@ -37,6 +43,25 @@ function getTransporter(): Transporter {
   return transporter;
 }
 
+async function record(msg: MailMessage, cc: string[], status: MailStatus, extra: { messageId?: string; error?: string }) {
+  try {
+    await prisma.mailLog.create({
+      data: {
+        kind: msg.kind ?? 'OTHER',
+        entityId: msg.entityId ?? null,
+        recipient: msg.to,
+        cc,
+        subject: msg.subject,
+        status,
+        messageId: extra.messageId ?? null,
+        error: extra.error ?? null,
+      },
+    });
+  } catch (err) {
+    logger.error(`[mail] could not write mail_log: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export const mailService = {
   isConfigured,
 
@@ -47,6 +72,7 @@ export const mailService = {
       logger.info(
         `[mail] DRY RUN to=${msg.to} cc=${cc.length} subject="${msg.subject}" (set MAIL_ENABLED=true and MAIL_HOST/USER/PASSWORD to send)`,
       );
+      await record(msg, cc, 'DRY_RUN', {});
       return { ok: true, dryRun: true };
     }
 
@@ -59,10 +85,12 @@ export const mailService = {
         text: msg.text,
         html: msg.html,
       });
+      await record(msg, cc, 'SENT', { messageId: info.messageId });
       return { ok: true, messageId: info.messageId };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`[mail] send failed to=${msg.to}: ${error}`);
+      await record(msg, cc, 'FAILED', { error });
       return { ok: false, error };
     }
   },
