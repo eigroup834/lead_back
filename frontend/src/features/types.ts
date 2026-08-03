@@ -29,6 +29,7 @@ export interface Lead {
   shellSpace: string | null;
   rawSpace: string | null;
   remarks: string | null;
+  industry: string | null;
   createDate: string | null;
   createdAt: string;
 }

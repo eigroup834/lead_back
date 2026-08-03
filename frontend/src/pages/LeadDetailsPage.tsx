@@ -90,6 +90,7 @@ export default function LeadDetailsPage() {
               <Field label="Mobile" value={lead.mobile} />
               <Field label="Alt. email" value={lead.altEmail} />
               <Field label="Alt. mobile" value={lead.altMobile} />
+              <Field label="Industry" value={lead.industry} />
               <Field label="Country" value={lead.country} />
               <Field label="City" value={lead.city} />
               <Field label="Source" value={lead.sourceChannel ? sourceChannelLabel(lead.sourceChannel) : lead.learnAbout} />

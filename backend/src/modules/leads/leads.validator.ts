@@ -51,6 +51,7 @@ export const updateLeadSchema = z.object({
   mobile: z.string().optional(),
   altEmail: z.string().optional(),
   altMobile: z.string().optional(),
+  industry: z.string().optional(),
   country: z.string().optional(),
   city: z.string().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
@@ -78,6 +79,7 @@ export const createLeadSchema = z.object({
   altMobile: z.string().trim().max(40).optional().or(z.literal(''))
     .refine((v) => !v || /^[+]?[\d\s-]{7,20}$/.test(v), { message: 'Alternate mobile must be 7-20 digits' }),
   website: z.string().trim().max(200).optional(),
+  industry: z.string().trim().max(150).optional().or(z.literal('')),
   learnAbout: z.string().trim().max(200).optional(),
   remarks: z.string().trim().max(2000).optional(),
   eventName: z.string().trim().max(200).optional(),
@@ -112,6 +114,7 @@ export const bulkImportRow = z.object({
   shellSpace: z.string().trim().max(100).optional(),
   rawSpace: z.string().trim().max(100).optional(),
   learnAbout: z.string().trim().max(200).optional(),
+  industry: z.string().trim().max(150).optional(),
   eventName: z.string().trim().max(200).optional(),
   remarks: z.string().trim().max(2000).optional(),
   source: z.enum(LEAD_SOURCES).optional(),

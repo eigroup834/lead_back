@@ -311,6 +311,7 @@ model Lead {
   altEmail     String? @map("alt_email")
   altMobile    String? @map("alt_mobile")
   website      String?
+  industry     String?
   learnAbout   String? @map("learn_about") // lead source
   remarks      String?
   ipAddress    String? @map("ip_address")

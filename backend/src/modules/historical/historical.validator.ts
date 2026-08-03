@@ -137,6 +137,7 @@ export const createHistoricalLeadSchema = z
       .refine((v) => !v || /^[+]?[\d\s-]{7,20}$/.test(v), { message: 'Alternate mobile must be 7-20 digits' }),
     city: z.string().trim().max(100).optional(),
     country: z.string().trim().max(100).optional(),
+    industry: z.string().trim().max(150).optional().or(z.literal('')),
     eventName: z.string().trim().max(200).optional(),
     eventYear: z.coerce.number().int().min(2000).max(2100).optional(),
     assignedUserId: z.string().uuid().optional(),

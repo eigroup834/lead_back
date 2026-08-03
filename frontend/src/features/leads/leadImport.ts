@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { HISTORICAL_INDUSTRIES } from '@/constants';
 
 export interface ImportColumn {
   key: string;
@@ -27,6 +28,7 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
   { key: 'shellSpace', header: 'Shell Space' },
   { key: 'rawSpace', header: 'Raw Space' },
   { key: 'learnAbout', header: 'How They Heard About Us', aliases: ['learn about', 'source of enquiry'] },
+  { key: 'industry', header: 'Industry', aliases: ['sector', 'vertical', 'industry segment'], hint: 'See the Industry options sheet' },
   { key: 'eventName', header: 'Event Name', aliases: ['event'] },
   { key: 'remarks', header: 'Remarks', aliases: ['notes', 'comment', 'comments'] },
   { key: 'priority', header: 'Priority', hint: 'LOW / MEDIUM / HIGH / CRITICAL' },
@@ -68,6 +70,7 @@ export function buildTemplateWorkbook(): XLSX.WorkBook {
       Phone: '022 4000 1122', Website: 'www.acme-example.com', Address: '12 Industrial Estate',
       City: 'Mumbai', State: 'Maharashtra', 'Zip Code': '400001', Country: 'India',
       'Shell Space': '18 sqm', 'Raw Space': '', 'How They Heard About Us': 'Website',
+      Industry: 'Datacenter & Cloud',
       'Event Name': 'India Expo 2026', Remarks: 'Asked for the floor plan', Priority: 'HIGH',
     },
     {
@@ -76,7 +79,8 @@ export function buildTemplateWorkbook(): XLSX.WorkBook {
       'Alternate Email': '', 'Alternate Mobile': '',
       Phone: '', Website: '', Address: '', City: 'Delhi', State: 'Delhi', 'Zip Code': '110001',
       Country: 'India', 'Shell Space': '', 'Raw Space': '36 sqm',
-      'How They Heard About Us': 'Referral', 'Event Name': 'India Expo 2026', Remarks: '', Priority: 'MEDIUM',
+      'How They Heard About Us': 'Referral', Industry: 'Smart Devices',
+      'Event Name': 'India Expo 2026', Remarks: '', Priority: 'MEDIUM',
     },
   ];
 
@@ -93,6 +97,10 @@ export function buildTemplateWorkbook(): XLSX.WorkBook {
     ['5. Priority accepts ' + PRIORITIES.join(', ') + '. Blank means MEDIUM.'],
     ['6. Imported leads are created as Exhibitor leads with status New.'],
     ['7. Rows whose email or mobile already exists are skipped and reported.'],
+    ['8. Industry is free text, but use one of the listed options to keep reporting consistent.'],
+    [''],
+    ['Industry options'],
+    ...HISTORICAL_INDUSTRIES.map((i) => [i]),
     [''],
     ['Columns'],
     ...IMPORT_COLUMNS.map((c) => [c.header, c.hint ?? '']),

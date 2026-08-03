@@ -10,7 +10,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LeadExcelImport from '@/components/LeadExcelImport';
 import PageHeader from '@/components/PageHeader';
 import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
-import { LEAD_SOURCES, PRIORITIES, NAME_RE, EMAIL_RE, MOBILE_RE, leadsListPath, prettyLabel } from '@/constants';
+import { LEAD_SOURCES, PRIORITIES, NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES, leadsListPath, prettyLabel } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
 import { useCreateHistoricalLeadMutation } from '@/features/historical/historicalApi';
@@ -20,7 +20,7 @@ const empty = {
   source: 'MANUAL', leadType: 'EXHIBITION', status: 'NEW', priority: 'MEDIUM',
   title: '', firstName: '', lastName: '', designation: '', email: '', mobile: '',
   altEmail: '', altMobile: '',
-  company: '', shellSpace: '', rawSpace: '', website: '', learnAbout: '',
+  company: '', shellSpace: '', rawSpace: '', website: '', learnAbout: '', industry: '',
   address: '', city: '', state: '', zipCode: '', country: '',
   remarks: '',
 };
@@ -98,6 +98,7 @@ export default function AddLeadPage() {
         altMobile: form.altMobile || undefined,
         city: form.city || undefined,
         country: form.country || undefined,
+        industry: form.industry || undefined,
         assignedUserId: assignTo || undefined,
       }).unwrap();
       setToast('Added to Historical Data');
@@ -252,6 +253,15 @@ export default function AddLeadPage() {
               <Grid item xs={12} sm={6}><TextField size="small" fullWidth required={reqd} label="Company" value={form.company} onChange={set('company')} onBlur={markTouched('company')} error={!!shownError('company')} helperText={shownError('company')} /></Grid>
               <Grid item xs={12} sm={3}><TextField size="small" fullWidth label="Shell space" value={form.shellSpace} onChange={set('shellSpace')} /></Grid>
               <Grid item xs={12} sm={3}><TextField size="small" fullWidth label="Raw space" value={form.rawSpace} onChange={set('rawSpace')} /></Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Industry</InputLabel>
+                  <Select label="Industry" value={form.industry} onChange={set('industry')}>
+                    <MenuItem value=""><em>Not set</em></MenuItem>
+                    {HISTORICAL_INDUSTRIES.map((i) => <MenuItem key={i} value={i}>{i}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
               <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Website" value={form.website} onChange={set('website')} /></Grid>
               <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="How did they learn about us" value={form.learnAbout} onChange={set('learnAbout')} /></Grid>
             </Grid>

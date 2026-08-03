@@ -390,6 +390,7 @@ export const historicalService = {
         altMobile: input.altMobile ?? null,
         city: input.city ?? null,
         country: input.country ?? null,
+        industry: input.industry || null,
         eventName: input.eventName ?? null,
         eventYear: input.eventYear ?? null,
         assignedUserId: input.assignedUserId ?? null,

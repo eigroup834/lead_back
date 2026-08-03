@@ -98,7 +98,8 @@ export const historicalApi = api.injectEndpoints({
     createHistoricalLead: build.mutation<ApiEnvelope<HistoricalLead>, {
       company?: string; name?: string; designation?: string; email?: string; mobile?: string;
       altEmail?: string; altMobile?: string;
-      city?: string; country?: string; eventName?: string; eventYear?: number; assignedUserId?: string;
+      city?: string; country?: string; industry?: string;
+      eventName?: string; eventYear?: number; assignedUserId?: string;
     }>({
       query: (body) => ({ url: '/historical/leads', method: 'POST', body }),
       invalidatesTags: ['Historical'],
