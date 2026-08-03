@@ -98,6 +98,28 @@ export const LEAD_SOURCE_CHANNELS = [
   { value: 'META', label: 'Meta' },
 ] as const;
 
+export const HISTORICAL_INDUSTRIES = [
+  'AI, Agentic AI & Machine Learning',
+  'Broadband, Fiber Optic & Cables',
+  'Cybersecurity',
+  'Datacenter & Cloud',
+  'Fintech & Banking',
+  'Green Technology, Energy Tech & ESG',
+  'Information & Communications Technologies (ICT)',
+  'IoT, Edge Computing & Digital Twins',
+  'IPTV & OTT Streaming',
+  'Mobile Devices, Accessories',
+  'Robotics, Drones & Autonomous Systems',
+  'Satellite Communications & Space Tech',
+  'Security & Surveillance',
+  'Semiconductors & Electronics Manufacturing',
+  'Smart Devices',
+  'Smart Future Cities & Digital Infrastructure',
+  'Smart Mobility & Connected Vehicles',
+  'Startups, Innovation Hubs & Incubators',
+  'Telecom, 5G, 6G & Network Infrastructure',
+] as const;
+
 export const NAME_RE = /^[A-Za-z\s.'-]+$/;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const MOBILE_RE = /^[+]?[\d\s-]{7,20}$/;

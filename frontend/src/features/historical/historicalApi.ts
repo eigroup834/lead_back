@@ -32,6 +32,9 @@ export interface HistoricalLead {
   spaceSqm: string | null;
   remark: string | null;
   specialRemarks: string | null;
+  lastContactMeet: string | null;
+  lastContactEmail: string | null;
+  lastContactMobile: string | null;
   exhHistory: ExhHistoryEntry[];
 }
 
@@ -107,7 +110,9 @@ export const historicalApi = api.injectEndpoints({
       city?: string | null; country?: string | null;
       eventName?: string | null; eventYear?: number | null; industry?: string | null;
       branchOffice?: string | null; remark?: string | null; specialRemarks?: string | null;
-      spaceSqm?: string | null; assignedUserId?: string | null; exhHistory?: ExhHistoryEntry[];
+      spaceSqm?: string | null; assignedUserId?: string | null;
+      lastContactMeet?: string | null; lastContactEmail?: string | null; lastContactMobile?: string | null;
+      exhHistory?: ExhHistoryEntry[];
     }>({
       query: ({ id, ...body }) => ({ url: `/historical/leads/${id}`, method: 'PATCH', body }),
       invalidatesTags: (_r, _e, { id }) => ['Historical', { type: 'Historical' as const, id }],

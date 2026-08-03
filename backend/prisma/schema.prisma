@@ -616,6 +616,9 @@ model HistoricalLead {
   remark             String?
   spaceSqm           String?    @map("space_sqm")
   dateOfConfirmation DateTime?  @map("dateofconfirmation") @db.Date
+  lastContactMeet    String?    @map("last_contact_meet")
+  lastContactEmail   String?    @map("last_contact_email")
+  lastContactMobile  String?    @map("last_contact_mobile")
   specialRemarks     String?    @map("specialremarks")
   exhHistory         Json       @default("[]") @map("exh_history") // [{ year, sqm_spo }]
   // Soft delete: "Delete" marks a record inactive, it is never removed.

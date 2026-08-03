@@ -76,6 +76,28 @@ export type ListRowsQuery = z.infer<typeof listRowsQuery>;
 export const idParam = z.object({ id: z.string().uuid() });
 export const uploadRowParams = z.object({ id: z.string().uuid(), rowId: z.string().uuid() });
 
+export const HISTORICAL_INDUSTRIES = [
+  'AI, Agentic AI & Machine Learning',
+  'Broadband, Fiber Optic & Cables',
+  'Cybersecurity',
+  'Datacenter & Cloud',
+  'Fintech & Banking',
+  'Green Technology, Energy Tech & ESG',
+  'Information & Communications Technologies (ICT)',
+  'IoT, Edge Computing & Digital Twins',
+  'IPTV & OTT Streaming',
+  'Mobile Devices, Accessories',
+  'Robotics, Drones & Autonomous Systems',
+  'Satellite Communications & Space Tech',
+  'Security & Surveillance',
+  'Semiconductors & Electronics Manufacturing',
+  'Smart Devices',
+  'Smart Future Cities & Digital Infrastructure',
+  'Smart Mobility & Connected Vehicles',
+  'Startups, Innovation Hubs & Incubators',
+  'Telecom, 5G, 6G & Network Infrastructure',
+] as const;
+
 export const HISTORICAL_SORTABLE = [
   'archivedAt', 'eventYear', 'company', 'name', 'designation', 'email', 'mobile',
   'city', 'country', 'remark', 'assignedUser',
@@ -147,6 +169,9 @@ export const updateHistoricalLeadSchema = z.object({
   eventYear: z.coerce.number().int().min(2000).max(2100).nullable().optional(),
   industry: z.string().trim().max(150).nullable().optional(),
   branchOffice: z.string().trim().max(150).nullable().optional(),
+  lastContactMeet: z.string().trim().max(100).nullable().optional(),
+  lastContactEmail: z.string().trim().max(100).nullable().optional(),
+  lastContactMobile: z.string().trim().max(100).nullable().optional(),
   remark: z.string().trim().max(4000).nullable().optional(),
   specialRemarks: z.string().trim().max(4000).nullable().optional(),
   spaceSqm: z.string().trim().max(100).nullable().optional(),

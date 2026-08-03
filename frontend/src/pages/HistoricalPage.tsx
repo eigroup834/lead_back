@@ -28,7 +28,7 @@ import { useListUsersQuery } from '@/features/adminApi';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
 import { SkeletonRows } from '@/components/Skeletons';
-import { NAME_RE, EMAIL_RE, MOBILE_RE } from '@/constants';
+import { NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES } from '@/constants';
 
 const NO_EVENT = '__NO_EVENT__';
 
@@ -61,6 +61,7 @@ export default function HistoricalPage() {
   const EDIT_FIELDS = [
     'company', 'name', 'designation', 'email', 'mobile', 'altEmail', 'altMobile', 'city', 'country',
     'eventName', 'eventYear', 'industry', 'branchOffice', 'remark', 'specialRemarks', 'spaceSqm',
+    'lastContactMeet', 'lastContactEmail', 'lastContactMobile',
   ] as const;
   type EditForm = Record<(typeof EDIT_FIELDS)[number], string> & { assignedUserId: string };
   const blankEdit = (): EditForm =>
@@ -151,6 +152,8 @@ export default function HistoricalPage() {
       eventName: r.eventName ?? '', eventYear: r.eventYear != null ? String(r.eventYear) : '',
       industry: r.industry ?? '', branchOffice: r.branchOffice ?? '', remark: r.remark ?? '',
       specialRemarks: r.specialRemarks ?? '', spaceSqm: r.spaceSqm ?? '',
+      lastContactMeet: r.lastContactMeet ?? '', lastContactEmail: r.lastContactEmail ?? '',
+      lastContactMobile: r.lastContactMobile ?? '',
       assignedUserId: r.assignedUserId ?? '',
     });
     setEditHistory([...r.exhHistory].sort((a, b) => a.year - b.year));
@@ -173,6 +176,9 @@ export default function HistoricalPage() {
         industry: editForm.industry || null, branchOffice: editForm.branchOffice || null,
         remark: editForm.remark || null, specialRemarks: editForm.specialRemarks || null,
         spaceSqm: editForm.spaceSqm || null,
+        lastContactMeet: editForm.lastContactMeet || null,
+        lastContactEmail: editForm.lastContactEmail || null,
+        lastContactMobile: editForm.lastContactMobile || null,
         assignedUserId: canAssign ? (editForm.assignedUserId || null) : undefined,
         exhHistory: editHistory.filter((h) => h.sqm_spo.trim()).map((h) => ({ year: Number(h.year), sqm_spo: h.sqm_spo })),
       }).unwrap();
@@ -405,6 +411,9 @@ export default function HistoricalPage() {
               <DetailRow label="Assigned to" value={detail.assignedUser ? `${detail.assignedUser.firstName} ${detail.assignedUser.lastName}` : detail.assignedTo} />
               <DetailRow label="Remark" value={detail.remark} />
               <DetailRow label="Special remarks" value={detail.specialRemarks} />
+              <DetailRow label="Last contact — meeting" value={detail.lastContactMeet} />
+              <DetailRow label="Last contact — email" value={detail.lastContactEmail} />
+              <DetailRow label="Last contact — mobile" value={detail.lastContactMobile} />
               <Divider />
               <Typography variant="subtitle2">Participation history (Sqm / Spo)</Typography>
               {detail.exhHistory.length ? (
@@ -480,11 +489,25 @@ export default function HistoricalPage() {
             <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Alternate mobile" value={editForm.altMobile} onChange={setEF('altMobile')} error={!!editErrors.altMobile} helperText={editErrors.altMobile} /></Grid>
             <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Event name" value={editForm.eventName} onChange={setEF('eventName')} /></Grid>
             <Grid item xs={6} sm={3}><TextField size="small" fullWidth label="Event year" type="number" value={editForm.eventYear} onChange={setEF('eventYear')} /></Grid>
-            <Grid item xs={6} sm={3}><TextField size="small" fullWidth label="Industry" value={editForm.industry} onChange={setEF('industry')} /></Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Industry</InputLabel>
+                <Select label="Industry" value={editForm.industry} onChange={setEF('industry')}>
+                  <MenuItem value=""><em>Not set</em></MenuItem>
+                  {!!editForm.industry && !HISTORICAL_INDUSTRIES.includes(editForm.industry as never) && (
+                    <MenuItem value={editForm.industry}>{editForm.industry} (existing)</MenuItem>
+                  )}
+                  {HISTORICAL_INDUSTRIES.map((i) => <MenuItem key={i} value={i}>{i}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
             <Grid item xs={6} sm={3}><TextField size="small" fullWidth label="City" value={editForm.city} onChange={setEF('city')} /></Grid>
             <Grid item xs={6} sm={3}><TextField size="small" fullWidth label="Country" value={editForm.country} onChange={setEF('country')} /></Grid>
             <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Branch office" value={editForm.branchOffice} onChange={setEF('branchOffice')} /></Grid>
             <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Space (sqm)" value={editForm.spaceSqm} onChange={setEF('spaceSqm')} /></Grid>
+            <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Last contact — meeting" value={editForm.lastContactMeet} onChange={setEF('lastContactMeet')} /></Grid>
+            <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Last contact — email" value={editForm.lastContactEmail} onChange={setEF('lastContactEmail')} /></Grid>
+            <Grid item xs={12} sm={4}><TextField size="small" fullWidth label="Last contact — mobile" value={editForm.lastContactMobile} onChange={setEF('lastContactMobile')} /></Grid>
             {canAssign && (
               <Grid item xs={12} sm={6}>
                 <FormControl size="small" fullWidth>

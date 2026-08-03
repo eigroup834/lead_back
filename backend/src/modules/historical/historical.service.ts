@@ -41,6 +41,8 @@ const AUDITED_FIELDS = {
   city: 'City', country: 'Country', eventName: 'Event name',
   eventYear: 'Event year', industry: 'Industry', branchOffice: 'Branch office',
   remark: 'Remark', specialRemarks: 'Special remarks', spaceSqm: 'Space (sqm)',
+  lastContactMeet: 'Last contact — meeting', lastContactEmail: 'Last contact — email',
+  lastContactMobile: 'Last contact — mobile',
 } as const;
 
 export interface HistoricalEditChange {

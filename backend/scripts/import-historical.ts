@@ -43,6 +43,9 @@ const FIELD_BY_HEADER: Record<string, string> = {
   sqmspo: 'space_sqm',          // current-year "Sqm / Spo" column
   dateofconfirmation: 'dateofconfirmation',
   specialremarks: 'specialremarks',
+  lastcontactmeet: 'last_contact_meet',
+  lastcontactemail: 'last_contact_email',
+  lastcontactmobile: 'last_contact_mobile',
 };
 
 // Order of the 16 bound params in the INSERT below.
@@ -50,6 +53,7 @@ const LEAD_COLUMNS = [
   'branch_office', 'assigned_to', 'company', 'event_name', 'industry', 'city',
   'country', 'name', 'designation', 'email', 'mobile', 'remark', 'space_sqm',
   'dateofconfirmation', 'specialremarks', 'event_year',
+  'last_contact_meet', 'last_contact_email', 'last_contact_mobile',
 ] as const;
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -160,12 +164,17 @@ async function main() {
     console.log(`🧹 --truncate: removed ${del} previously imported row(s) (+ their exh_history)`);
   }
 
+  const leadPlaceholders = LEAD_COLUMNS
+    .map((c, i) => (c === 'dateofconfirmation' ? `$${i + 1}::date` : `$${i + 1}`))
+    .join(',');
+  const historyParam = `$${LEAD_COLUMNS.length + 1}::jsonb`;
+  const assigneeParam = `$${LEAD_COLUMNS.length + 2}::uuid`;
+
   const leadSql =
     `INSERT INTO historical_leads
        (id, archived_at, status, ${LEAD_COLUMNS.join(', ')}, exh_history, assigned_user_id)
      VALUES
-       (gen_random_uuid(), now(), 'CONVERTED',
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::date,$15,$16, $17::jsonb, $18::uuid)
+       (gen_random_uuid(), now(), 'CONVERTED', ${leadPlaceholders}, ${historyParam}, ${assigneeParam})
      RETURNING hist_code`;
 
   let imported = 0;
