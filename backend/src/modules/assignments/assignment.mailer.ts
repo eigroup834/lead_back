@@ -21,7 +21,7 @@ function leadTitle(l: LeadLine): string {
   return l.company || [l.firstName, l.lastName].filter(Boolean).join(' ') || 'Untitled lead';
 }
 
-function compose(lead: LeadLine, assigneeName: string, assignedByName: string) {
+function compose(lead: LeadLine, assigneeName: string, assignedByName: string, copied: boolean) {
   const title = leadTitle(lead);
   const url = `${env.APP_BASE_URL.replace(/\/$/, '')}/leads/${lead.id}`;
   const rows: Array<[string, string]> = [
@@ -54,7 +54,7 @@ function compose(lead: LeadLine, assigneeName: string, assignedByName: string) {
           .join('')}
       </table>
       <p><a href="${esc(url)}" style="background:#4f46e5;color:#fff;padding:9px 16px;border-radius:6px;text-decoration:none">Open the lead</a></p>
-      <p style="color:#64748b;font-size:12px">Sent by ${esc(env.APP_NAME)}. You are copied because you are a member of the team.</p>
+      <p style="color:#64748b;font-size:12px">Sent by ${esc(env.APP_NAME)}.${copied ? ' Your team is copied on this assignment.' : ''}</p>
     </div>`;
 
   return { subject: `Lead assigned to ${assigneeName}: ${title}`, text, html };
@@ -65,13 +65,19 @@ export function notifyAssignments(leadIds: string[], assignToId: string, assigne
     try {
       if (!leadIds.length) return;
 
+      // Only a real hand-off copies the team. Taking a lead yourself — adding one
+      // from the Add Lead page, for instance — notifies nobody else.
+      const isSelfAssignment = assignToId === assignedById;
+
       const [assignee, assignedBy, others, leads] = await Promise.all([
         prisma.user.findUnique({ where: { id: assignToId }, select: { firstName: true, lastName: true, email: true } }),
         prisma.user.findUnique({ where: { id: assignedById }, select: { firstName: true, lastName: true } }),
-        prisma.user.findMany({
-          where: { deletedAt: null, status: 'ACTIVE', id: { not: assignToId } },
-          select: { email: true },
-        }),
+        isSelfAssignment
+          ? Promise.resolve([] as Array<{ email: string }>)
+          : prisma.user.findMany({
+            where: { deletedAt: null, status: 'ACTIVE', id: { not: assignToId } },
+            select: { email: true },
+          }),
         prisma.lead.findMany({
           where: { id: { in: leadIds } },
           select: {
@@ -92,7 +98,7 @@ export function notifyAssignments(leadIds: string[], assignToId: string, assigne
 
       let sent = 0;
       for (const lead of leads) {
-        const { subject, text, html } = compose(lead, assigneeName, assignedByName);
+        const { subject, text, html } = compose(lead, assigneeName, assignedByName, cc.length > 0);
         const res = await mailService.send({
           to: assignee.email, cc, subject, text, html,
           kind: 'ASSIGNMENT', entityId: lead.id,
