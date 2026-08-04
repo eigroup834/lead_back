@@ -1,0 +1,23 @@
+git pull
+cd backend
+npm ci
+npx prisma generate 
+npx prisma migrate status    
+npx prisma migrate deploy
+npx prisma migrate status  
+npm run build                 # backend: tsc + tsc-alias
+pm2 restart exhibitor-api
+
+MAIL_ENABLED=true
+MAIL_HOST=mail.eigroup.in
+MAIL_PORT=465
+MAIL_SECURE=true                                   # true for 465, false for 587
+MAIL_USER=crmsupport@eigroup.in
+MAIL_PASSWORD=<password>
+MAIL_FROM=Exhibitor CRM <crmsupport@eigroup.in>    # must match MAIL_USER
+MAIL_TIMEOUT_MS=15000
+APP_BASE_URL=https://your-live-url                 # NOT localhost
+SMS_ENABLED=false
+HISTORICAL_MATCH_THRESHOLD=0.9
+
+UPDATE sync_state SET last_synced_id = 0, last_synced_date = NULL;
