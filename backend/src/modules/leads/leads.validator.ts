@@ -79,7 +79,7 @@ export const createLeadSchema = z.object({
   altMobile: z.string().trim().max(40).optional().or(z.literal(''))
     .refine((v) => !v || /^[+]?[\d\s-]{7,20}$/.test(v), { message: 'Alternate mobile must be 7-20 digits' }),
   website: z.string().trim().max(200).optional(),
-  industry: z.string().trim().max(150).optional().or(z.literal('')),
+  industry: z.string().trim().min(1, 'Industry is required').max(150),
   learnAbout: z.string().trim().max(200).optional(),
   remarks: z.string().trim().max(2000).optional(),
   eventName: z.string().trim().max(200).optional(),

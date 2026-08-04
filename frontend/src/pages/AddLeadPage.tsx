@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Button, Card, CardContent, CardHeader, Grid, MenuItem, Stack, Tab, Tabs, TextField,
-  Typography, Snackbar, Alert, FormControl, InputLabel, Select, ToggleButton, ToggleButtonGroup,
+  Typography, Snackbar, Alert, FormControl, FormHelperText, InputLabel, Select, ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -14,13 +14,12 @@ import { LEAD_SOURCES, PRIORITIES, NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDU
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
 import { useCreateHistoricalLeadMutation } from '@/features/historical/historicalApi';
-import { useListUsersQuery } from '@/features/adminApi';
 
 const empty = {
   source: 'MANUAL', leadType: 'EXHIBITION', status: 'NEW', priority: 'MEDIUM',
   title: '', firstName: '', lastName: '', designation: '', email: '', mobile: '',
   altEmail: '', altMobile: '',
-  company: '', shellSpace: '', rawSpace: '', website: '', learnAbout: '', industry: '',
+  company: '', shellSpace: '', website: '', learnAbout: '', industry: '',
   address: '', city: '', state: '', zipCode: '', country: '',
   remarks: '',
 };
@@ -32,6 +31,7 @@ function validate(form: Form, requireAll: boolean) {
   return {
     company: required(form.company),
     designation: required(form.designation),
+    industry: required(form.industry),
     firstName: form.firstName && !NAME_RE.test(form.firstName) ? 'Letters only' : required(form.firstName),
     lastName: form.lastName && !NAME_RE.test(form.lastName) ? 'Letters only' : '',
     email: form.email ? (!EMAIL_RE.test(form.email) ? 'Enter a valid email' : '') : required(form.email),
@@ -56,21 +56,17 @@ function serverError(error: unknown): string {
 
 export default function AddLeadPage() {
   const navigate = useNavigate();
-  const { has, level } = usePermissions();
-  const canAssign = has('lead.assign');
+  const { level, user } = usePermissions();
+  const ownerId = user?.id;
   const [form, setForm] = useState<Form>(empty);
   const [mode, setMode] = useState<'SINGLE' | 'EXCEL'>('SINGLE');
   const [destination, setDestination] = useState<'LEAD' | 'HISTORICAL'>('LEAD');
-  const [assignTo, setAssignTo] = useState('');
   const [createLead, { isLoading, error }] = useCreateLeadMutation();
   const [createHistorical, { isLoading: savingHist }] = useCreateHistoricalLeadMutation();
   const [assignSingle] = useAssignSingleMutation();
   const { guard: dupGuard, dialog: dupDialog } = useHistoricalDuplicateGuard();
-  const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !canAssign });
   const [toast, setToast] = useState<string | null>(null);
 
-  const members = [...(users?.data ?? [])]
-    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
   const set = (k: keyof Form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const reqd = destination === 'LEAD';
@@ -84,7 +80,7 @@ export default function AddLeadPage() {
 
   const submit = async () => {
     if (hasErrors) {
-      setTouched({ company: true, firstName: true, designation: true, email: true, mobile: true });
+      setTouched({ company: true, firstName: true, designation: true, email: true, mobile: true, industry: true });
       return;
     }
     if (destination === 'HISTORICAL') {
@@ -99,7 +95,7 @@ export default function AddLeadPage() {
         city: form.city || undefined,
         country: form.country || undefined,
         industry: form.industry || undefined,
-        assignedUserId: assignTo || undefined,
+        assignedUserId: ownerId,
       }).unwrap();
       setToast('Added to Historical Data');
       setTimeout(() => navigate('/historical'), 700);
@@ -125,13 +121,13 @@ export default function AddLeadPage() {
       setTimeout(() => navigate(`/leads/${res.data.id}`), 600);
     };
 
-    if (!assignTo) {
+    if (!ownerId) {
       goToLead();
       return;
     }
 
     await dupGuard([res.data.id], async () => {
-      try { await assignSingle({ leadId: res.data.id, assignToId: assignTo }).unwrap(); } catch { }
+      try { await assignSingle({ leadId: res.data.id, assignToId: ownerId }).unwrap(); } catch { }
       goToLead();
     });
   };
@@ -153,25 +149,8 @@ export default function AddLeadPage() {
 
       {mode === 'EXCEL' ? (
         <Stack spacing={2.5}>
-          {canAssign && (
-            <Card>
-              <CardContent>
-                <FormControl size="small" sx={{ minWidth: 280 }}>
-                  <InputLabel>Assign imported leads to (optional)</InputLabel>
-                  <Select
-                    label="Assign imported leads to (optional)"
-                    value={assignTo}
-                    onChange={(e) => setAssignTo(e.target.value)}
-                  >
-                    <MenuItem value=""><em>Leave unassigned</em></MenuItem>
-                    {members.map((u) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
-                  </Select>
-                </FormControl>
-              </CardContent>
-            </Card>
-          )}
           <LeadExcelImport
-            assignToId={assignTo || undefined}
+            assignToId={ownerId}
             onImported={(n) => setToast(`${n} lead(s) imported`)}
           />
         </Stack>
@@ -190,17 +169,6 @@ export default function AddLeadPage() {
                   <ToggleButton value="HISTORICAL">Historical Data</ToggleButton>
                 </ToggleButtonGroup>
               </Grid>
-              {canAssign && (
-                <Grid item xs={12} sm={6}>
-                  <FormControl size="small" fullWidth>
-                    <InputLabel>Assign to (optional)</InputLabel>
-                    <Select label="Assign to (optional)" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
-                      <MenuItem value=""><em>Unassigned</em></MenuItem>
-                      {members.map((u) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              )}
             </Grid>
           </CardContent>
         </Card>
@@ -252,14 +220,14 @@ export default function AddLeadPage() {
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}><TextField size="small" fullWidth required={reqd} label="Company" value={form.company} onChange={set('company')} onBlur={markTouched('company')} error={!!shownError('company')} helperText={shownError('company')} /></Grid>
               <Grid item xs={12} sm={3}><TextField size="small" fullWidth label="Shell space" value={form.shellSpace} onChange={set('shellSpace')} /></Grid>
-              <Grid item xs={12} sm={3}><TextField size="small" fullWidth label="Raw space" value={form.rawSpace} onChange={set('rawSpace')} /></Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl size="small" fullWidth>
+                <FormControl size="small" fullWidth required={reqd} error={!!shownError('industry')}>
                   <InputLabel>Industry</InputLabel>
-                  <Select label="Industry" value={form.industry} onChange={set('industry')}>
+                  <Select label="Industry" value={form.industry} onChange={set('industry')} onBlur={markTouched('industry')}>
                     <MenuItem value=""><em>Not set</em></MenuItem>
                     {HISTORICAL_INDUSTRIES.map((i) => <MenuItem key={i} value={i}>{i}</MenuItem>)}
                   </Select>
+                  {!!shownError('industry') && <FormHelperText>{shownError('industry')}</FormHelperText>}
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}><TextField size="small" fullWidth label="Website" value={form.website} onChange={set('website')} /></Grid>

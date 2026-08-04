@@ -11,6 +11,25 @@ import {
   IMPORT_COLUMNS, downloadTemplate, parseWorkbook, type ParseResult,
 } from '@/features/leads/leadImport';
 
+function importErrorMessage(err: unknown): string {
+  const e = err as { status?: number | string; data?: { error?: { message?: string; details?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] } } } };
+  const api = e?.data?.error;
+
+  if (e?.status === 'FETCH_ERROR') return 'Could not reach the server. Check your connection and try again.';
+  if (e?.status === 401 || e?.status === 403) return 'You do not have permission to import leads. Ask an administrator to grant "lead.create".';
+  if (e?.status === 413) return 'That file is too large for one import. Split it into smaller batches.';
+
+  const fieldErrors = api?.details?.fieldErrors;
+  if (fieldErrors) {
+    const first = Object.entries(fieldErrors).find(([, m]) => m?.length);
+    if (first) return `${first[0]}: ${first[1][0]}`;
+  }
+  if (api?.details?.formErrors?.length) return api.details.formErrors[0];
+  if (api?.message) return api.message;
+  if (typeof e?.status === 'number' && e.status >= 500) return 'The server hit an error while importing. Nothing was saved — please try again.';
+  return 'Something went wrong during the import. Nothing was saved.';
+}
+
 const PREVIEW_LIMIT = 8;
 const PREVIEW_KEYS = ['company', 'firstName', 'lastName', 'email', 'mobile', 'city', 'country'];
 
@@ -30,13 +49,14 @@ export default function LeadExcelImport({ assignToId, onImported }: {
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [parseError, setParseError] = useState('');
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [importError, setImportError] = useState('');
   const [bulkImport, { isLoading }] = useBulkImportLeadsMutation();
 
   const valid = parsed?.rows.filter((r) => !r.error) ?? [];
   const invalid = parsed?.rows.filter((r) => r.error) ?? [];
 
   const reset = () => {
-    setParsed(null); setFileName(''); setParseError(''); setResult(null);
+    setParsed(null); setFileName(''); setParseError(''); setResult(null); setImportError('');
     if (fileInput.current) fileInput.current.value = '';
   };
 
@@ -61,12 +81,17 @@ export default function LeadExcelImport({ assignToId, onImported }: {
 
   const doImport = async () => {
     if (!valid.length) return;
-    const res = await bulkImport({
-      rows: valid.map((r) => ({ row: r.row, ...r.values })),
-      assignToId: assignToId || undefined,
-    }).unwrap();
-    setResult(res.data);
-    if (res.data.created > 0) onImported?.(res.data.created);
+    setImportError('');
+    try {
+      const res = await bulkImport({
+        rows: valid.map((r) => ({ row: r.row, ...r.values })),
+        assignToId: assignToId || undefined,
+      }).unwrap();
+      setResult(res.data);
+      if (res.data.created > 0) onImported?.(res.data.created);
+    } catch (err) {
+      setImportError(importErrorMessage(err));
+    }
   };
 
   return (
@@ -141,6 +166,13 @@ export default function LeadExcelImport({ assignToId, onImported }: {
                 {invalid.length > 10 && (
                   <Typography variant="body2" sx={{ mt: 0.5 }}>…and {invalid.length - 10} more.</Typography>
                 )}
+              </Alert>
+            )}
+
+            {importError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                <AlertTitle>Import failed — nothing was saved</AlertTitle>
+                {importError}
               </Alert>
             )}
 

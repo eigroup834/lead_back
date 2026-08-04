@@ -141,10 +141,23 @@ async function main() {
     if (FIELD_BY_HEADER[key]) fieldByCol.set(col, FIELD_BY_HEADER[key]);
   });
 
+  const unmapped: string[] = [];
+  headerRow.eachCell((cell, col) => {
+    const raw = cellStr(cell.value) ?? '';
+    if (!raw) return;
+    if (!fieldByCol.has(col) && !yearByCol.has(col)) unmapped.push(raw);
+  });
+
   const mappedFields = [...new Set(fieldByCol.values())];
   const years = [...yearByCol.values()].sort();
+  console.log(`   header row   : ${headerRowNum}`);
   console.log(`   mapped fields: ${mappedFields.join(', ')}`);
   console.log(`   year columns : ${years.join(', ') || '(none)'}`);
+  if (unmapped.length) {
+    console.log(`   ⚠️  UNMAPPED headers (${unmapped.length}) — these columns import as empty:`);
+    unmapped.forEach((h) => console.log(`        "${h}"`));
+    console.log(`   accepted names: ${Object.keys(FIELD_BY_HEADER).join(', ')}`);
+  }
   if (fieldByCol.size === 0) {
     console.error('❌ No recognizable columns. Check the header row matches the documented names.');
     process.exit(1);
@@ -204,6 +217,12 @@ async function main() {
     // Skip empty rows (nothing identifying and no history).
     const identifying = byField.company || byField.name || byField.email || byField.mobile;
     if (!identifying && history.length === 0) { skipped++; continue; }
+
+    // A repeated header row inside the data (some sheets stack several exports).
+    if (Object.entries(byField).some(([f, v]) => v && FIELD_BY_HEADER[norm(v)] === f)) {
+      skipped++;
+      continue;
+    }
 
     // event_year: infer from date of confirmation year, else the latest history year.
     const confYear = byField.dateofconfirmation ? Number(byField.dateofconfirmation.slice(0, 4)) : null;

@@ -75,7 +75,9 @@ export const leadsService = {
   },
 
   async bulkImport(userId: string, input: BulkImportInput) {
-    if (input.assignToId) await assertAssignableUser(input.assignToId);
+    // Imported leads belong to whoever ran the import unless told otherwise.
+    const assignToId = input.assignToId ?? userId;
+    if (assignToId) await assertAssignableUser(assignToId);
     const valid: BulkImportRow[] = [];
     const errors: Array<{ row: number; message: string }> = [];
 
@@ -143,14 +145,14 @@ export const leadsService = {
               email: email || null,
               source: source ?? 'MANUAL',
               leadType: 'EXHIBITION',
-              status: input.assignToId ? 'ASSIGNED' : 'NEW',
-              assignedUserId: input.assignToId ?? null,
-              assignedAt: input.assignToId ? new Date() : null,
+              status: assignToId ? 'ASSIGNED' : 'NEW',
+              assignedUserId: assignToId ?? null,
+              assignedAt: assignToId ? new Date() : null,
             },
           });
-          if (input.assignToId) {
+          if (assignToId) {
             await tx.leadAssignment.create({
-              data: { leadId: lead.id, assignedToId: input.assignToId, assignedById: userId, type: 'BULK' },
+              data: { leadId: lead.id, assignedToId: assignToId, assignedById: userId, type: 'BULK' },
             });
           }
         });

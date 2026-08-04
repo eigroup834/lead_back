@@ -52,6 +52,7 @@ const ALL_COLUMNS = [
 ] as const;
 
 const BULK_ASSIGN_ENABLED = false;
+const EXCEL_EXPORT_ENABLED = false;
 
 type LeadSortKey = (typeof ALL_COLUMNS)[number]['sort'] | 'createdAt';
 
@@ -127,7 +128,9 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     () => leads.filter((l) => selected[l.id] && l.status === 'CONVERTED').length,
     [leads, selected],
   );
-  const visibleCols = ALL_COLUMNS.filter((c) => !hidden[c.key]);
+  const visibleCols = ALL_COLUMNS.filter(
+    (c) => !hidden[c.key] && (assignedOnly || c.key !== 'assignedUser'),
+  );
   const assignableUsers = [...(users?.data ?? [])]
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
@@ -292,7 +295,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
               Filters
             </Button>
           </Badge>
-          {has('lead.export') && (
+          {EXCEL_EXPORT_ENABLED && has('lead.export') && (
             <Tooltip title="Download leads as Excel">
               <span>
                 <IconButton onClick={downloadExcel} disabled={downloading}>
@@ -353,7 +356,9 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
                 {visibleCols.map((c) => (
                   <SortableCell key={c.key} field={c.sort} sort={sort} onSort={toggleSort}>{c.label}</SortableCell>
                 ))}
-                {showActions && <TableCell padding="checkbox" />}
+                {showActions && (
+                  <TableCell align="right" sx={{ width: 108, pr: 2, whiteSpace: 'nowrap' }}>Actions</TableCell>
+                )}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -374,8 +379,31 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
                     </TableCell>
                   ))}
                   {showActions && (
-                    <TableCell padding="checkbox">
-                      <IconButton size="small" onClick={(e) => setRowMenu({ el: e.currentTarget, lead: l })}><MoreVertIcon fontSize="small" /></IconButton>
+                    <TableCell align="right" sx={{ pr: 2, whiteSpace: 'nowrap' }}>
+                      {assignedOnly ? (
+                        <IconButton size="small" onClick={(e) => setRowMenu({ el: e.currentTarget, lead: l })}><MoreVertIcon fontSize="small" /></IconButton>
+                      ) : canAssignAction && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => openSingleAssign(l)}
+                          sx={{
+                            minHeight: 28,
+                            minWidth: 72,
+                            px: 1.5,
+                            fontSize: '0.75rem',
+                            lineHeight: 1.6,
+                            borderColor: 'divider',
+                            color: 'primary.main',
+                            '&:hover': {
+                              borderColor: 'primary.main',
+                              bgcolor: 'action.hover',
+                            },
+                          }}
+                        >
+                          Assign
+                        </Button>
+                      )}
                     </TableCell>
                   )}
                 </TableRow>
@@ -405,9 +433,9 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
       <Menu anchorEl={rowMenu?.el} open={!!rowMenu} onClose={() => setRowMenu(null)}>
         {assignedOnly && <MenuItem onClick={() => rowMenu && navigate(`/leads/${rowMenu.lead.id}`)}>Open details</MenuItem>}
         {canAssignAction && <MenuItem onClick={() => rowMenu && openSingleAssign(rowMenu.lead)}>{assignVerb}…</MenuItem>}
-        {canEdit && <Divider />}
-        {canEdit && <MenuItem disabled sx={{ opacity: 1, fontSize: 12, color: 'text.secondary' }}>Convert to external lead</MenuItem>}
-        {canEdit && EXTERNAL_LEAD_TYPES.map((t) => (
+        {assignedOnly && canEdit && <Divider />}
+        {assignedOnly && canEdit && <MenuItem disabled sx={{ opacity: 1, fontSize: 12, color: 'text.secondary' }}>Convert to external lead</MenuItem>}
+        {assignedOnly && canEdit && EXTERNAL_LEAD_TYPES.map((t) => (
           <MenuItem
             key={t}
             onClick={() => { if (rowMenu) setConvertTarget({ lead: rowMenu.lead, type: t }); setRowMenu(null); }}
