@@ -21,3 +21,30 @@ SMS_ENABLED=false
 HISTORICAL_MATCH_THRESHOLD=0.9
 
 UPDATE sync_state SET last_synced_id = 0, last_synced_date = NULL;
+
+
+TRUNCATE TABLE
+  lead_followups,
+  lead_notes,
+  lead_activities,
+  lead_status_history,
+  lead_assignments,
+  lead_attachments,
+  leads,
+  external_leads,
+  historical_lead_edits,
+  historical_leads,
+  mail_log,
+  notifications,
+  audit_logs,
+  saved_filters,
+  sync_logs,
+  sync_state
+RESTART IDENTITY;
+
+TRUNCATE TABLE refresh_tokens;
+
+npx tsx scripts/import-historical.ts "master.xlsx" --dry --limit 20   # check the header mapping first
+npx tsx scripts/import-historical.ts "master.xlsx"
+
+
