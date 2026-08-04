@@ -22,9 +22,9 @@ export const historicalController = {
     return ok(res, years);
   },
 
-  async events(req: Request, res: Response) {
-    const events = await historicalService.events(req.user!);
-    return ok(res, events);
+  async industries(req: Request, res: Response) {
+    const industries = await historicalService.industries(req.user!);
+    return ok(res, industries);
   },
 
   async leadHistory(req: Request, res: Response) {

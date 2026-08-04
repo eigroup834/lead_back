@@ -85,8 +85,8 @@ export const historicalService = {
     };
     if (user.level === 1 && q.assigneeId) where.assignedUserId = q.assigneeId;
     if (q.year) where.eventYear = q.year;
-    if (q.noEventName) where.eventName = null;
-    else if (q.eventName) where.eventName = q.eventName;
+    if (q.noIndustry) where.industry = null;
+    else if (q.industry) where.industry = q.industry;
     if (q.dateFrom || q.dateTo) {
       where.archivedAt = {};
       if (q.dateFrom) (where.archivedAt as Prisma.DateTimeFilter).gte = q.dateFrom;
@@ -123,14 +123,14 @@ export const historicalService = {
     return groups.map((g) => ({ year: g.eventYear as number, count: g._count._all }));
   },
 
-  async events(user: AuthUser) {
+  async industries(user: AuthUser) {
     const groups = await prisma.historicalLead.groupBy({
-      by: ['eventName'],
+      by: ['industry'],
       where: { restoredLeadId: null, deletedAt: null, ...historicalScope(user) },
       _count: { _all: true },
-      orderBy: { eventName: 'asc' },
+      orderBy: { industry: 'asc' },
     });
-    return groups.map((g) => ({ event: g.eventName, count: g._count._all }));
+    return groups.map((g) => ({ industry: g.industry, count: g._count._all }));
   },
 
   async leadHistory(user: AuthUser, id: string) {

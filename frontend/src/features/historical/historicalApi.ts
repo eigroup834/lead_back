@@ -44,8 +44,8 @@ export interface HistoricalListParams {
   q?: string;
   year?: number;
   assigneeId?: string;
-  eventName?: string;
-  noEventName?: boolean;
+  industry?: string;
+  noIndustry?: boolean;
   includeInactive?: boolean;
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
@@ -75,8 +75,8 @@ export const historicalApi = api.injectEndpoints({
       query: () => '/historical/leads/years',
       providesTags: ['Historical'],
     }),
-    historicalEvents: build.query<ApiEnvelope<Array<{ event: string | null; count: number }>>, void>({
-      query: () => '/historical/leads/events',
+    historicalIndustries: build.query<ApiEnvelope<Array<{ industry: string | null; count: number }>>, void>({
+      query: () => '/historical/leads/industries',
       providesTags: ['Historical'],
     }),
     historicalLeadHistory: build.query<ApiEnvelope<HistoricalEdit[]>, string>({
@@ -124,7 +124,7 @@ export const historicalApi = api.injectEndpoints({
 export const {
   useListHistoricalLeadsQuery,
   useHistoricalYearsQuery,
-  useHistoricalEventsQuery,
+  useHistoricalIndustriesQuery,
   useHistoricalLeadHistoryQuery,
   useRestoreHistoricalLeadsMutation,
   useDeleteHistoricalLeadMutation,

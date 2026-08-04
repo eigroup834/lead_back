@@ -36,7 +36,7 @@ export const HISTORICAL_INDUSTRIES = [
 
 export const HISTORICAL_SORTABLE = [
   'archivedAt', 'eventYear', 'company', 'name', 'designation', 'email', 'mobile',
-  'city', 'country', 'remark', 'assignedUser',
+  'city', 'country', 'industry', 'remark', 'assignedUser',
 ] as const;
 
 export const listHistoricalLeadsQuery = z.object({
@@ -45,8 +45,8 @@ export const listHistoricalLeadsQuery = z.object({
   q: z.string().trim().max(120).optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
   assigneeId: z.string().uuid().optional(),
-  eventName: z.string().trim().max(200).optional(),
-  noEventName: z.coerce.boolean().optional(),
+  industry: z.string().trim().max(150).optional(),
+  noIndustry: z.coerce.boolean().optional(),
   includeInactive: z.coerce.boolean().optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),

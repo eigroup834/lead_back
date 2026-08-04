@@ -26,6 +26,7 @@ function mapRow(r: SourceRow) {
     website: r.website,
     learnAbout: r.learn_about,
     remarks: r.remarks,
+    industry: r.remarks,
     ipAddress: r.ip_address,
     createDate: r.create_date,
     eventName: r.event_name,
@@ -62,9 +63,7 @@ function classifyDownload(r: DownloadSourceRow): 'EXHIBITOR' | ExternalCategory 
 
 function mapDownloadToLead(r: DownloadSourceRow) {
   const { firstName, lastName } = splitName(r.name);
-  const remarks = [r.industry ? `Industry: ${r.industry}` : null, r.business_interest ? `Interest: ${r.business_interest}` : null]
-    .filter(Boolean)
-    .join(' | ') || null;
+  const remarks = r.business_interest ? `Interest: ${r.business_interest}` : null;
   return {
     sourceId: Number(r.id),
     firstName,
@@ -76,6 +75,7 @@ function mapDownloadToLead(r: DownloadSourceRow) {
     eventName: r.event_name,
     ipAddress: r.ip_address,
     createDate: downloadCreateDate(r),
+    industry: r.industry ? String(r.industry) : null,
     remarks,
     source: 'WEBSITE' as const,
     sourceChannel: 'POST_SHOW_DOWNLOAD' as const,

@@ -48,3 +48,9 @@ npx tsx scripts/import-historical.ts "master.xlsx" --dry --limit 20   # check th
 npx tsx scripts/import-historical.ts "master.xlsx"
 
 
+UPDATE leads SET industry = remarks
+WHERE source_channel = 'SPACE_BOOKING'
+  AND industry IS NULL AND remarks IS NOT NULL AND remarks <> '';
+
+
+

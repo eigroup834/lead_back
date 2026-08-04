@@ -50,7 +50,7 @@ function filterWhere(q: ListLeadsQuery): Prisma.LeadWhereInput {
 const RELATION_SORTS: Record<string, (dir: Prisma.SortOrder) => Prisma.LeadOrderByWithRelationInput> = {
   assignedUser: (dir) => ({ assignedUser: { firstName: dir } }),
 };
-const NULLABLE_SORTS = new Set(['createDate', 'company', 'firstName', 'email', 'mobile', 'country', 'sourceChannel', 'shellSpace', 'remarks']);
+const NULLABLE_SORTS = new Set(['createDate', 'company', 'firstName', 'email', 'mobile', 'country', 'sourceChannel', 'shellSpace', 'industry']);
 
 function orderByOf(q: ListLeadsQuery): Prisma.LeadOrderByWithRelationInput[] {
   const relation = RELATION_SORTS[q.sortBy];

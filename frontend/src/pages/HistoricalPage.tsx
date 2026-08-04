@@ -19,7 +19,7 @@ import Grid from '@mui/material/Grid';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
-  useListHistoricalLeadsQuery, useRestoreHistoricalLeadsMutation, useHistoricalEventsQuery,
+  useListHistoricalLeadsQuery, useRestoreHistoricalLeadsMutation, useHistoricalIndustriesQuery,
   useHistoricalLeadHistoryQuery, useUpdateHistoricalLeadMutation,
   useDeleteHistoricalLeadMutation, useRestoreRemovedHistoricalLeadMutation,
   type HistoricalLead, type ExhHistoryEntry,
@@ -30,7 +30,7 @@ import PageHeader from '@/components/PageHeader';
 import { SkeletonRows } from '@/components/Skeletons';
 import { NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES } from '@/constants';
 
-const NO_EVENT = '__NO_EVENT__';
+const NO_INDUSTRY = '__NO_INDUSTRY__';
 
 function validateEdit(f: { company: string; name: string; email: string; mobile: string; altEmail: string; altMobile: string }) {
   const errors = {
@@ -50,7 +50,7 @@ function validateEdit(f: { company: string; name: string; email: string; mobile:
 
 type HistoricalSortKey =
   | 'archivedAt' | 'eventYear' | 'company' | 'name' | 'designation' | 'email'
-  | 'mobile' | 'city' | 'country' | 'remark' | 'assignedUser';
+  | 'mobile' | 'city' | 'country' | 'industry' | 'remark' | 'assignedUser';
 
 export default function HistoricalPage() {
   const { level } = usePermissions();
@@ -70,7 +70,7 @@ export default function HistoricalPage() {
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
   const [assignee, setAssignee] = useState('');
-  const [eventName, setEventName] = useState('');
+  const [industry, setIndustry] = useState('');
   const [page, setPage] = useState(0);
   const { sort, toggle: toggleSort } = useSort<HistoricalSortKey>({ by: 'eventYear', dir: 'desc' }, () => setPage(0));
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -87,12 +87,12 @@ export default function HistoricalPage() {
   const { data, isFetching } = useListHistoricalLeadsQuery({
     page: page + 1, limit: rowsPerPage, q: debounced || undefined,
     assigneeId: assignee || undefined,
-    eventName: eventName && eventName !== NO_EVENT ? eventName : undefined,
-    noEventName: eventName === NO_EVENT || undefined,
+    industry: industry && industry !== NO_INDUSTRY ? industry : undefined,
+    noIndustry: industry === NO_INDUSTRY || undefined,
     includeInactive: showInactive || undefined,
     sortBy: sort.by, sortDir: sort.dir,
   });
-  const { data: events } = useHistoricalEventsQuery();
+  const { data: industries } = useHistoricalIndustriesQuery();
   
   const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !canAssign });
   const members = [...(users?.data ?? [])]
@@ -104,7 +104,7 @@ export default function HistoricalPage() {
 
   const rows = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
-  const anyFilter = Boolean(debounced || assignee || eventName);
+  const anyFilter = Boolean(debounced || assignee || industry);
   const selectedIds = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected]);
   const canSelect = canRestore;
 
@@ -206,13 +206,13 @@ export default function HistoricalPage() {
             sx={{ minWidth: 220, flex: '1 1 220px', maxWidth: 320 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
           />
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Event</InputLabel>
-            <Select label="Event" value={eventName} onChange={(e) => { setEventName(e.target.value); setPage(0); }}>
-              <MenuItem value="">All events</MenuItem>
-              {(events?.data ?? []).map((e) => (
-                <MenuItem key={e.event ?? NO_EVENT} value={e.event ?? NO_EVENT}>
-                  {e.event ?? '(No event name)'} ({e.count})
+          <FormControl size="small" sx={{ minWidth: 220 }}>
+            <InputLabel>Industry</InputLabel>
+            <Select label="Industry" value={industry} onChange={(e) => { setIndustry(e.target.value); setPage(0); }}>
+              <MenuItem value="">All industries</MenuItem>
+              {(industries?.data ?? []).map((i) => (
+                <MenuItem key={i.industry ?? NO_INDUSTRY} value={i.industry ?? NO_INDUSTRY}>
+                  {i.industry ?? '(No industry)'} ({i.count})
                 </MenuItem>
               ))}
             </Select>
@@ -282,6 +282,7 @@ export default function HistoricalPage() {
                   <SortableCell field="mobile" sort={sort} onSort={toggleSort}>Mobile</SortableCell>
                   <SortableCell field="city" sort={sort} onSort={toggleSort}>City</SortableCell>
                   <SortableCell field="country" sort={sort} onSort={toggleSort}>Country</SortableCell>
+                  <SortableCell field="industry" sort={sort} onSort={toggleSort}>Industry</SortableCell>
                   <SortableCell field="remark" sort={sort} onSort={toggleSort}>Remark</SortableCell>
                   <SortableCell field="assignedUser" sort={sort} onSort={toggleSort}>Assigned to</SortableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>
@@ -304,6 +305,9 @@ export default function HistoricalPage() {
                       <TableCell><Typography variant="caption">{r.mobile || '—'}</Typography></TableCell>
                       <TableCell><Typography variant="caption">{r.city || '—'}</Typography></TableCell>
                       <TableCell><Typography variant="caption">{r.country || '—'}</Typography></TableCell>
+                      <TableCell>
+                        <Typography variant="caption" noWrap sx={{ maxWidth: 180, display: 'block' }} title={r.industry ?? ''}>{r.industry || '—'}</Typography>
+                      </TableCell>
                       <TableCell>
                         <Typography variant="caption" noWrap sx={{ maxWidth: 200, display: 'block' }} title={r.remark ?? ''}>{r.remark || '—'}</Typography>
                       </TableCell>
@@ -369,11 +373,11 @@ export default function HistoricalPage() {
                   );
                 })}
                 {isFetching && rows.length === 0 && (
-                  <SkeletonRows rows={rowsPerPage > 10 ? 10 : rowsPerPage} columns={canSelect ? 11 : 10} />
+                  <SkeletonRows rows={rowsPerPage > 10 ? 10 : rowsPerPage} columns={canSelect ? 12 : 11} />
                 )}
                 {!isFetching && rows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={canSelect ? 11 : 10} align="center" sx={{ py: 6, color: 'text.secondary' }}>No historical leads match your filters</TableCell>
+                    <TableCell colSpan={canSelect ? 12 : 11} align="center" sx={{ py: 6, color: 'text.secondary' }}>No historical leads match your filters</TableCell>
                   </TableRow>
                 )}
               </TableBody>

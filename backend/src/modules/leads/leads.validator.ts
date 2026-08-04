@@ -7,7 +7,7 @@ export const LEAD_STATUSES = [
 
 export const SORTABLE = [
   'createdAt', 'createDate', 'company', 'status', 'firstName', 'email', 'mobile',
-  'country', 'sourceChannel', 'shellSpace', 'remarks', 'assignedUser',
+  'country', 'sourceChannel', 'shellSpace', 'industry', 'assignedUser',
 ] as const;
 
 export const LEAD_SOURCES = [

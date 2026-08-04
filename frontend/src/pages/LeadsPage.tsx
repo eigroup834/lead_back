@@ -45,7 +45,7 @@ const ALL_COLUMNS = [
   { key: 'mobile', label: 'Mobile', sort: 'mobile' },
   { key: 'country', label: 'Country', sort: 'country' },
   { key: 'shellSpace', label: 'Shell Space', sort: 'shellSpace' },
-  { key: 'remarks', label: 'Interest', sort: 'remarks' },
+  { key: 'industry', label: 'Interest', sort: 'industry' },
   { key: 'source', label: 'Source', sort: 'sourceChannel' },
   { key: 'status', label: 'Status', sort: 'status' },
   { key: 'assignedUser', label: 'Assigned To', sort: 'assignedUser' },
@@ -568,8 +568,8 @@ function renderCell(key: string, l: Lead) {
   switch (key) {
     case 'date': return leadDateCell(l);
     case 'name': return [l.firstName, l.lastName].filter(Boolean).join(' ') || '—';
-    case 'remarks': return l.remarks
-      ? <Tooltip title={l.remarks}><Typography variant="body2" noWrap sx={{ maxWidth: 220 }}>{l.remarks}</Typography></Tooltip>
+    case 'industry': return l.industry
+      ? <Tooltip title={l.industry}><Typography variant="body2" noWrap sx={{ maxWidth: 220 }}>{l.industry}</Typography></Tooltip>
       : '—';
     case 'status': return <StatusChip status={l.status} />;
     case 'assignedUser': return l.assignedUser ? `${l.assignedUser.firstName} ${l.assignedUser.lastName}` : <Chip label="Unassigned" size="small" variant="outlined" />;
