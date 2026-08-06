@@ -71,12 +71,18 @@ export const leadsController = {
   },
 
   async update(req: Request, res: Response) {
-    const lead = await leadsService.update(req.params.id, req.body);
+    const lead = await leadsService.update(req.params.id, req.body, req.user!.id);
     return ok(res, lead);
   },
 
+  async editHistory(req: Request, res: Response) {
+    return ok(res, await leadsService.editHistory(req.params.id));
+  },
+
   async changeStatus(req: Request, res: Response) {
-    const lead = await leadsService.changeStatus(req.params.id, req.body.status, req.user!.id, req.body.reason, req.body.sqmSpace);
+    const lead = await leadsService.changeStatus(
+      req.params.id, req.body.status, req.user!.id, req.body.reason, req.body.sqmSpace, req.body.sqmSpaceType,
+    );
     return ok(res, lead);
   },
 

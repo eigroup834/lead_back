@@ -22,10 +22,11 @@ router.post('/archive-historical', requirePermission('lead.edit'), validate({ bo
 
 router.get('/', requirePermission('lead.view'), validate({ query: listLeadsQuery }), asyncHandler(leadsController.list));
 router.post('/', requirePermission('lead.create'), validate({ body: createLeadSchema }), asyncHandler(leadsController.create));
-router.post('/bulk', requirePermission('lead.create'), validate({ body: bulkImportSchema }), asyncHandler(leadsController.bulkImport));
+router.post('/bulk', requirePermission('lead.import'), validate({ body: bulkImportSchema }), asyncHandler(leadsController.bulkImport));
 router.get('/export', requirePermission('lead.export'), validate({ query: listLeadsQuery }), asyncHandler(leadsController.exportXlsx));
 router.get('/:id', requirePermission('lead.view'), validate({ params: idParam }), asyncHandler(leadsController.get));
 router.patch('/:id', requirePermission('lead.edit'), validate({ params: idParam, body: updateLeadSchema }), asyncHandler(leadsController.update));
+router.get('/:id/history', requirePermission('lead.view'), validate({ params: idParam }), asyncHandler(leadsController.editHistory));
 router.post('/:id/status', requirePermission('lead.edit'), validate({ params: idParam, body: changeStatusSchema }), asyncHandler(leadsController.changeStatus));
 router.post('/:id/convert-external', requirePermission('lead.edit'), validate({ params: idParam, body: convertExternalSchema }), asyncHandler(leadsController.convertExternal));
 router.delete('/:id', requirePermission('lead.delete'), validate({ params: idParam }), asyncHandler(leadsController.remove));

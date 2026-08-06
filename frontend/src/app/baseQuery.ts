@@ -5,9 +5,25 @@ import type { RootState } from '@/store';
 
 const API_PREFIX = '/api/v1';
 
+const serializeParams = (params: Record<string, unknown>): string => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item !== undefined && item !== null) search.append(key, String(item));
+      }
+    } else {
+      search.append(key, String(value));
+    }
+  }
+  return search.toString();
+};
+
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: API_PREFIX,
   credentials: 'include',
+  paramsSerializer: serializeParams,
   prepareHeaders: (headers, { getState }) => {
     const token = (getState() as RootState).auth.accessToken;
     if (token) headers.set('authorization', `Bearer ${token}`);

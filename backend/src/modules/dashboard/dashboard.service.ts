@@ -14,6 +14,16 @@ export interface DashFilter {
   userId?: string;
 }
 
+const SPACE_RE = /^\s*(\d+(?:\.\d+)?)/;
+
+export function parseSpace(v: string | null): number | null {
+  if (!v) return null;
+  const m = SPACE_RE.exec(v);
+  return m ? Number(m[1]) : null;
+}
+
+const round2 = (n: number) => Number(n.toFixed(2));
+
 const keyOf = (f: DashFilter) =>
   `${f.dateFrom?.toISOString().slice(0, 10) ?? ''}_${f.dateTo?.toISOString().slice(0, 10) ?? ''}_${f.eventName ?? ''}_${f.country ?? ''}_${f.teamId ?? ''}_${f.userId ?? ''}`;
 
@@ -77,16 +87,33 @@ export const dashboardService = {
       const base = await leadWhere(f);
       const now = new Date();
       const and = (extra: Prisma.LeadWhereInput) => ({ AND: [base, extra] });
-      const [total, today, assigned, unassigned, converted, lost] = await Promise.all([
+      const [total, today, assigned, unassigned, converted, lost, spaceRows] = await Promise.all([
         prisma.lead.count({ where: base }),
         prisma.lead.count({ where: and({ createdAt: { gte: startOfDay(now), lte: endOfDay(now) } }) }),
         prisma.lead.count({ where: and({ assignedUserId: { not: null } }) }),
         prisma.lead.count({ where: and({ assignedUserId: null }) }),
         prisma.lead.count({ where: and({ status: 'CONVERTED' }) }),
         prisma.lead.count({ where: and({ status: 'LOST' }) }),
+        prisma.lead.findMany({ where: and({ status: 'CONVERTED' }), select: { sqmSpace: true } }),
       ]);
       const conversionRate = total ? Number(((converted / total) * 100).toFixed(2)) : 0;
-      return { total, today, assigned, unassigned, converted, lost, conversionRate };
+
+      let spaceBooked = 0;
+      let spaceUnknown = 0;
+      for (const r of spaceRows) {
+        const n = parseSpace(r.sqmSpace);
+        if (n === null) {
+          if (r.sqmSpace?.trim()) spaceUnknown += 1;
+          continue;
+        }
+        spaceBooked += n;
+      }
+
+      return {
+        total, today, assigned, unassigned, converted, lost, conversionRate,
+        spaceBooked: round2(spaceBooked),
+        spaceUnknown,
+      };
     });
   },
 
@@ -156,6 +183,47 @@ export const dashboardService = {
     });
   },
 
+  // Conversion split by where the lead came from. sourceChannel is the specific
+  // intake (Space Booking, Post Show, LinkedIn…); leads without one fall back to
+  // their source, which is how Historical and Manual leads show up.
+  conversionBySource(f: DashFilter) {
+    return remember('convBySource', f, async () => {
+      const where = await leadWhere(f);
+      const [totals, converted] = await Promise.all([
+        prisma.lead.groupBy({ by: ['sourceChannel', 'source'], where, _count: { _all: true } }),
+        prisma.lead.groupBy({
+          by: ['sourceChannel', 'source'],
+          where: { AND: [where, { status: 'CONVERTED' }] },
+          _count: { _all: true },
+        }),
+      ]);
+
+      const keyOf = (r: { sourceChannel: string | null; source: string | null }) =>
+        r.sourceChannel ?? r.source ?? 'UNKNOWN';
+
+      const rows = new Map<string, { key: string; total: number; converted: number }>();
+      for (const r of totals) {
+        const k = keyOf(r);
+        const row = rows.get(k) ?? { key: k, total: 0, converted: 0 };
+        row.total += r._count._all;
+        rows.set(k, row);
+      }
+      for (const r of converted) {
+        const k = keyOf(r);
+        const row = rows.get(k) ?? { key: k, total: 0, converted: 0 };
+        row.converted += r._count._all;
+        rows.set(k, row);
+      }
+
+      return [...rows.values()]
+        .map((r) => ({
+          ...r,
+          conversionRate: r.total ? Number(((r.converted / r.total) * 100).toFixed(2)) : 0,
+        }))
+        .sort((a, b) => b.total - a.total);
+    });
+  },
+
   teamPerformance(f: DashFilter) {
     return remember('team', f, async () => {
       const leadBase = await leadWhere(f);
@@ -177,12 +245,23 @@ export const dashboardService = {
         select: { id: true, firstName: true, lastName: true },
       });
 
-      const [assignedG, convG, callsG, fuG] = await Promise.all([
+      const [assignedG, convG, callsG, fuG, spaceRows] = await Promise.all([
         prisma.lead.groupBy({ by: ['assignedUserId'], where: { AND: [leadBase, { assignedUserId: { not: null } }] }, _count: { _all: true } }),
         prisma.lead.groupBy({ by: ['assignedUserId'], where: { AND: [leadBase, { status: 'CONVERTED' }] }, _count: { _all: true } }),
         prisma.leadActivity.groupBy({ by: ['userId'], where: { ...actWhere, type: 'CALL' }, _count: { _all: true } }),
         prisma.leadFollowup.groupBy({ by: ['assigneeId'], where: fuWhere, _count: { _all: true } }),
+        prisma.lead.findMany({
+          where: { AND: [leadBase, { assignedUserId: { not: null } }, { status: 'CONVERTED' }] },
+          select: { assignedUserId: true, sqmSpace: true },
+        }),
       ]);
+
+      const bookedSpaceM = new Map<string, number>();
+      for (const r of spaceRows) {
+        const n = parseSpace(r.sqmSpace);
+        if (n === null || !r.assignedUserId) continue;
+        bookedSpaceM.set(r.assignedUserId, (bookedSpaceM.get(r.assignedUserId) ?? 0) + n);
+      }
 
       const m = (g: { _count: { _all: number } }[], key: string) =>
         new Map(g.map((x) => [(x as Record<string, unknown>)[key] as string, x._count._all]));
@@ -199,6 +278,7 @@ export const dashboardService = {
             userId: u.id, name: `${u.firstName} ${u.lastName}`,
             assigned, converted, calls: callsM.get(u.id) ?? 0, followupsDone: fuM.get(u.id) ?? 0,
             conversionRate: assigned ? Number(((converted / assigned) * 100).toFixed(2)) : 0,
+            spaceBooked: round2(bookedSpaceM.get(u.id) ?? 0),
           };
         })
         .sort((a, b) => b.converted - a.converted || b.assigned - a.assigned);

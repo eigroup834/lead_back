@@ -8,12 +8,8 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import HistoryEduIcon from '@mui/icons-material/HistoryEdu';
 import ReplayIcon from '@mui/icons-material/Replay';
-import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import RestoreFromTrashIcon from '@mui/icons-material/RestoreFromTrash';
 import IconButton from '@mui/material/IconButton';
 import Grid from '@mui/material/Grid';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -27,8 +23,9 @@ import {
 import { useListUsersQuery } from '@/features/adminApi';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import RowActions from '@/components/RowActions';
 import { SkeletonRows } from '@/components/Skeletons';
-import { NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES } from '@/constants';
+import { NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES, formatDateTime } from '@/constants';
 
 const NO_INDUSTRY = '__NO_INDUSTRY__';
 
@@ -321,54 +318,20 @@ export default function HistoricalPage() {
                         </Stack>
                       </TableCell>
                       <TableCell align="right">
-                          <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                            <Tooltip title="View details">
-                              <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }} onClick={() => setDetail(r)}>
-                                <VisibilityIcon fontSize="small" />
-                              </Button>
-                            </Tooltip>
-                            {showInactive ? (
-                              <Tooltip title="Restore to the archive">
-                                <Button
-                                  size="small" variant="outlined" color="success" sx={{ minWidth: 0, px: 1 }}
-                                  disabled={undeleting} onClick={() => doUndelete(r)}
-                                >
-                                  <RestoreFromTrashIcon fontSize="small" />
-                                </Button>
-                              </Tooltip>
-                            ) : (
-                              <>
-                                {canRestore && (
-                                  <Tooltip title="Move back to Lead Management">
-                                    <Button
-                                      size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }}
-                                      onClick={() => setRestoreConfirm({ ids: [r.id], label: `“${r.company || name || 'this lead'}”` })}
-                                    >
-                                      <ReplayIcon fontSize="small" />
-                                    </Button>
-                                  </Tooltip>
-                                )}
-                                {canEdit && (
-                                  <Tooltip title="Edit">
-                                    <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }} onClick={() => openEdit(r)}>
-                                      <EditIcon fontSize="small" />
-                                    </Button>
-                                  </Tooltip>
-                                )}
-                                {canEdit && (
-                                  <Tooltip title="Delete (marks inactive, keeps the record)">
-                                    <Button
-                                      size="small" variant="outlined" color="error" sx={{ minWidth: 0, px: 1 }}
-                                      onClick={() => setDeleteTarget(r)}
-                                    >
-                                      <DeleteOutlineIcon fontSize="small" />
-                                    </Button>
-                                  </Tooltip>
-                                )}
-                              </>
-                            )}
-                          </Stack>
-                        </TableCell>
+                        <RowActions
+                          actions={[
+                            { label: 'View', onClick: () => setDetail(r) },
+                            { label: 'Restore', onClick: () => doUndelete(r), disabled: undeleting, hidden: !showInactive },
+                            {
+                              label: 'To Leads',
+                              onClick: () => setRestoreConfirm({ ids: [r.id], label: `“${r.company || name || 'this lead'}”` }),
+                              hidden: showInactive || !canRestore,
+                            },
+                            { label: 'Edit', onClick: () => openEdit(r), hidden: showInactive || !canEdit },
+                            { label: 'Delete', onClick: () => setDeleteTarget(r), hidden: showInactive || !canEdit },
+                          ]}
+                        />
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -589,7 +552,7 @@ function EditHistory({ leadId }: { leadId: string }) {
           <Typography variant="caption" color="text.secondary">
             {e.editedBy ? `${e.editedBy.firstName} ${e.editedBy.lastName}` : 'Unknown user'}
             {' · '}
-            {new Date(e.createdAt).toLocaleString()}
+            {formatDateTime(e.createdAt)}
           </Typography>
           {e.changes.map((c) => (
             <Typography key={c.field} variant="body2" sx={{ display: 'block' }}>

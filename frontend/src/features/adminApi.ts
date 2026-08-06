@@ -15,6 +15,12 @@ export interface FollowupLead {
   eventName: string | null;
   status: string;
   priority: string;
+  createdAt: string;
+  createDate: string | null;
+  shellSpace: string | null;
+  industry: string | null;
+  sourceChannel: string | null;
+  source: string | null;
   assignedUser: { id: string; firstName: string; lastName: string } | null;
 }
 

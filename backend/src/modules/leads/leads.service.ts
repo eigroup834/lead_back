@@ -29,8 +29,37 @@ import type { LeadStatus, ExternalLeadCategory } from '@prisma/client';
 
 const EXTERNAL_LEAD_TYPES = new Set(['VISITOR', 'DELEGATE', 'SPEAKER']);
 
+const EDITABLE_FIELDS = {
+  title: 'Title', company: 'Company', firstName: 'First name', lastName: 'Last name',
+  designation: 'Designation', email: 'Email', mobile: 'Mobile',
+  altEmail: 'Alternate email', altMobile: 'Alternate mobile', industry: 'Industry',
+  country: 'Country', city: 'City', priority: 'Priority',
+} as const;
+
+type EditableField = keyof typeof EDITABLE_FIELDS;
+
+export interface LeadEditChange {
+  field: string;
+  label: string;
+  from: string | null;
+  to: string | null;
+}
+
+const asText = (v: unknown): string | null =>
+  v === null || v === undefined || v === '' ? null : String(v);
+
 async function bustDashboard() {
   await cache.delPattern('dash:*');
+}
+
+// A converted lead is a closed record: no edits, no reassignment, no status change,
+// no reclassification. Archiving it to Historical is still allowed — that moves the
+// record rather than altering it.
+export const CONVERTED_LOCKED_MESSAGE =
+  'This lead is converted and can no longer be edited, reassigned or reclassified.';
+
+export function assertNotConverted(lead: { status: LeadStatus }) {
+  if (lead.status === 'CONVERTED') throw AppError.conflict(CONVERTED_LOCKED_MESSAGE);
 }
 
 export const leadsService = {
@@ -228,21 +257,65 @@ export const leadsService = {
     return lead;
   },
 
-  async update(id: string, input: UpdateLeadInput) {
-    await this.get(id);
-    const lead = await prisma.lead.update({ where: { id }, data: input });
+  async update(id: string, input: UpdateLeadInput, editedById?: string) {
+    const existing = await this.get(id);
+    assertNotConverted(existing);
+
+    const changes: LeadEditChange[] = [];
+    for (const [key, label] of Object.entries(EDITABLE_FIELDS) as [EditableField, string][]) {
+      const next = input[key];
+      if (next === undefined) continue;
+      const from = asText((existing as Record<string, unknown>)[key]);
+      const to = asText(next);
+      if (from !== to) changes.push({ field: key, label, from, to });
+    }
+
+    if (!changes.length) return existing;
+
+    const [lead] = await prisma.$transaction([
+      prisma.lead.update({ where: { id }, data: input }),
+      prisma.leadEdit.create({
+        data: {
+          leadId: id,
+          editedById: editedById ?? null,
+          changes: changes as unknown as Prisma.InputJsonValue,
+        },
+      }),
+    ]);
     await bustDashboard();
     return lead;
   },
 
-  async changeStatus(id: string, toStatus: LeadStatus, userId: string, reason?: string, sqmSpace?: string) {
+  async editHistory(id: string) {
+    await this.get(id);
+    return prisma.leadEdit.findMany({
+      where: { leadId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: { editedBy: { select: { id: true, firstName: true, lastName: true } } },
+    });
+  },
+
+  async changeStatus(
+    id: string,
+    toStatus: LeadStatus,
+    userId: string,
+    reason?: string,
+    sqmSpace?: string,
+    sqmSpaceType?: string,
+  ) {
     const lead = await this.get(id);
+    assertNotConverted(lead);
     if (lead.status === toStatus && sqmSpace === undefined) return lead;
 
     const [updated] = await prisma.$transaction([
       prisma.lead.update({
         where: { id },
-        data: { status: toStatus, ...(sqmSpace !== undefined ? { sqmSpace } : {}) },
+        data: {
+          status: toStatus,
+          ...(sqmSpace !== undefined ? { sqmSpace } : {}),
+          ...(sqmSpaceType !== undefined ? { sqmSpaceType } : {}),
+        },
       }),
       prisma.leadStatusHistory.create({
         data: { leadId: id, fromStatus: lead.status, toStatus, changedById: userId, reason },
@@ -265,6 +338,7 @@ export const leadsService = {
 
   async convertToExternal(id: string, type: ExternalLeadCategory) {
     const lead = await this.get(id);
+    assertNotConverted(lead);
     const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || null;
 
     const external = await prisma.$transaction(async (tx) => {

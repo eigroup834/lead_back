@@ -5,25 +5,25 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Toolbar,
   Tooltip, Typography, Select, FormControl, InputLabel, Dialog,
   DialogTitle, DialogContent, DialogActions, TablePagination, Snackbar, Alert, Divider, CircularProgress,
-  Popover, Badge,
+  Popover, Badge, Tabs, Tab,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
 import AddIcon from '@mui/icons-material/Add';
 import DownloadIcon from '@mui/icons-material/Download';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import StatusChip from '@/components/StatusChip';
+import RowActions, { STICKY_ACTION_COL } from '@/components/RowActions';
 import PageHeader from '@/components/PageHeader';
 import { SkeletonRows } from '@/components/Skeletons';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
 import {
-  LEAD_SOURCE_CHANNELS, LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES,
-  prettyLabel, sentenceCase, sourceChannelLabel, type ExternalLeadType,
+  LEAD_SOURCE_CHANNELS,
+  prettyLabel, sourceChannelLabel, formatDate, formatDateTime,
 } from '@/constants';
 import { useAppSelector } from '@/store';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -45,11 +45,32 @@ const ALL_COLUMNS = [
   { key: 'mobile', label: 'Mobile', sort: 'mobile' },
   { key: 'country', label: 'Country', sort: 'country' },
   { key: 'shellSpace', label: 'Shell Space', sort: 'shellSpace' },
+  { key: 'bookedSpace', label: 'Booked Space', sort: 'shellSpace' },
   { key: 'industry', label: 'Interest', sort: 'industry' },
   { key: 'source', label: 'Source', sort: 'sourceChannel' },
   { key: 'status', label: 'Status', sort: 'status' },
   { key: 'assignedUser', label: 'Assigned To', sort: 'assignedUser' },
 ] as const;
+
+
+// Assigned Leads is worked through tab by tab, so the common statuses are one click
+// away. "New" covers both NEW and ASSIGNED — leads that have not been touched yet.
+const STATUS_TABS: Array<{ key: string; label: string; statuses?: string[] }> = [
+  { key: 'NEW', label: 'New', statuses: ['NEW', 'ASSIGNED'] },
+  { key: 'CONVERTED', label: 'Converted' },
+  { key: 'INTERESTED', label: 'Interested' },
+  { key: 'NOT_INTERESTED', label: 'Not Interested' },
+  { key: 'INVALID', label: 'Invalid' },
+  { key: 'NOT_REACHABLE', label: 'No Answer/Not Reachable' },
+];
+
+const statusesForTab = (key: string): string[] | undefined => {
+  if (!key) return undefined;
+  return STATUS_TABS.find((t) => t.key === key)?.statuses ?? [key];
+};
+
+// Assigned Leads always sits on a tab; New is where unworked leads live.
+const DEFAULT_ASSIGNED_TAB = 'NEW';
 
 const BULK_ASSIGN_ENABLED = false;
 const EXCEL_EXPORT_ENABLED = false;
@@ -65,7 +86,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
   const [sourceChannel, setSourceChannel] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(assignedOnly ? DEFAULT_ASSIGNED_TAB : '');
   const [country, setCountry] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -76,7 +97,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
   const [colAnchor, setColAnchor] = useState<null | HTMLElement>(null);
   const [filterAnchor, setFilterAnchor] = useState<null | HTMLElement>(null);
-  const [rowMenu, setRowMenu] = useState<{ el: HTMLElement; lead: Lead } | null>(null);
   const { sort, toggle: toggleSort } = useSort<LeadSortKey>({ by: 'createdAt', dir: 'desc' }, () => setPage(0));
 
   const [assignOpen, setAssignOpen] = useState(false);
@@ -85,14 +105,13 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
   const [assignTo, setAssignTo] = useState('');
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [convertTarget, setConvertTarget] = useState<{ lead: Lead; type: ExternalLeadType } | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveYear, setArchiveYear] = useState(new Date().getFullYear());
   const token = useAppSelector((s) => s.auth.accessToken);
 
-  const { data, isFetching, refetch } = useListLeadsQuery({
+  const { data, isFetching, refetch, error: listError } = useListLeadsQuery({
     page: page + 1, limit: rowsPerPage, q: debounced || undefined,
-    status: assignedOnly ? (statusFilter ? [statusFilter] : undefined) : ['NEW'],
+    status: assignedOnly ? statusesForTab(statusFilter) : ['NEW'],
     sourceChannel: sourceChannel && sourceChannel !== 'HISTORICAL' ? sourceChannel : undefined,
     source: sourceChannel === 'HISTORICAL' ? 'HISTORICAL' : undefined,
     country: country || undefined,
@@ -108,15 +127,20 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
 
   const [assignBulk, { isLoading: bulkLoading }] = useAssignBulkMutation();
   const [assignSingle, { isLoading: singleLoading }] = useAssignSingleMutation();
-  const [convertExternal, { isLoading: convertLoading }] = useConvertExternalMutation();
   const [archiveToHistorical, { isLoading: archiving }] = useArchiveToHistoricalMutation();
 
   const canAssign = has('lead.assign');
   const canAssignAction = assignedOnly ? isSuperAdmin : canAssign;
-  const canEdit = has('lead.edit');
   const canArchive = has('lead.edit') && !assignedOnly;
-  const canSelect = (BULK_ASSIGN_ENABLED && canAssign) || canArchive;
-  const showActions = canAssign || canEdit;
+  // Row checkboxes only exist to drive bulk actions. Bulk assign is switched off and
+  // the archive flow no longer uses selection, so no column is rendered.
+  const canSelect = BULK_ASSIGN_ENABLED && canAssign;
+  // The Converted tab is a record of what was booked: Shell Space (the enquiry) gives
+  // way to Booked Space, and there is nothing left to action on a closed lead.
+  const onConvertedTab = Boolean(assignedOnly) && statusFilter === 'CONVERTED';
+  // Reassign is the only row action, and it is Super Admin only on Assigned Leads.
+  // Tie the column to that so nobody else gets an empty Actions column.
+  const showActions = canAssignAction && !onConvertedTab;
   const assignVerb = assignedOnly ? 'Reassign' : 'Assign';
 
   const { guard: dupGuard, checking: checkingDup, dialog: dupDialog } = useHistoricalDuplicateGuard(assignVerb);
@@ -128,22 +152,27 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
     () => leads.filter((l) => selected[l.id] && l.status === 'CONVERTED').length,
     [leads, selected],
   );
-  const visibleCols = ALL_COLUMNS.filter(
-    (c) => !hidden[c.key] && (assignedOnly || c.key !== 'assignedUser'),
-  );
+  const visibleCols = ALL_COLUMNS.filter((c) => {
+    if (hidden[c.key]) return false;
+    if (c.key === 'assignedUser') return Boolean(assignedOnly);
+    if (c.key === 'bookedSpace') return onConvertedTab;
+    if (c.key === 'shellSpace') return !onConvertedTab;
+    return true;
+  });
   const assignableUsers = [...(users?.data ?? [])]
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
   const resetPaging = () => setPage(0);
   const advancedActive = [country, dateFrom, dateTo].filter(Boolean).length;
-  const anyActive = Boolean(sourceChannel || statusFilter || country || dateFrom || dateTo || assignee || search);
+  const defaultStatus = assignedOnly ? DEFAULT_ASSIGNED_TAB : '';
+  const anyActive = Boolean(sourceChannel || statusFilter !== defaultStatus || country || dateFrom || dateTo || assignee || search);
   const clearAll = () => {
-    setSearch(''); setSourceChannel(''); setStatusFilter(''); setCountry(''); setDateFrom(''); setDateTo(''); setAssignee('');
+    setSearch(''); setSourceChannel(''); setStatusFilter(defaultStatus); setCountry(''); setDateFrom(''); setDateTo(''); setAssignee('');
     resetPaging();
   };
 
   const openBulkAssign = () => { setAssignMode('bulk'); setAssignLeadId(null); setAssignOpen(true); };
-  const openSingleAssign = (lead: Lead) => { setAssignMode('single'); setAssignLeadId(lead.id); setAssignOpen(true); setRowMenu(null); };
+  const openSingleAssign = (lead: Lead) => { setAssignMode('single'); setAssignLeadId(lead.id); setAssignOpen(true); };
 
   const confirmThenAssign = async () => {
     const ids = assignMode === 'single' && assignLeadId ? [assignLeadId] : selectedIds;
@@ -172,7 +201,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
       const params = new URLSearchParams();
       if (debounced) params.set('q', debounced);
       if (!assignedOnly) params.append('status', 'NEW');
-      else if (statusFilter) params.append('status', statusFilter);
+      else statusesForTab(statusFilter)?.forEach((s) => params.append('status', s));
       if (sourceChannel === 'HISTORICAL') params.set('source', 'HISTORICAL');
       else if (sourceChannel) params.set('sourceChannel', sourceChannel);
       if (country) params.set('country', country);
@@ -244,6 +273,17 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
       />
 
       <Card>
+        {assignedOnly && (
+          <Tabs
+            value={STATUS_TABS.some((t) => t.key === statusFilter) ? statusFilter : false}
+            onChange={(_e, v: string) => { setStatusFilter(v); resetPaging(); }}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{ px: 1, borderBottom: 1, borderColor: 'divider' }}
+          >
+            {STATUS_TABS.map((t) => <Tab key={t.key || 'all'} value={t.key} label={t.label} />)}
+          </Tabs>
+        )}
         <Toolbar sx={{ gap: 1.5, flexWrap: 'wrap', py: 2, '& .MuiInputBase-root': { height: 40 } }}>
           <TextField
             size="small" placeholder="Search company, email, name, mobile…"
@@ -259,15 +299,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
               <MenuItem value="HISTORICAL">Historical</MenuItem>
             </Select>
           </FormControl>
-          {assignedOnly && (
-            <FormControl size="small" sx={{ minWidth: 170 }}>
-              <InputLabel>Status</InputLabel>
-              <Select label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); resetPaging(); }}>
-                <MenuItem value="">All statuses</MenuItem>
-                {LEAD_DETAIL_STATUS_OPTIONS.map((st) => <MenuItem key={st} value={st}>{sentenceCase(st)}</MenuItem>)}
-              </Select>
-            </FormControl>
-          )}
           {canFilterByMember && (
             <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>Team member</InputLabel>
@@ -336,6 +367,16 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
           </Box>
         </Popover>
 
+        {listError && (
+          <Alert
+            severity="error"
+            sx={{ mx: 2, mb: 1 }}
+            action={<Button color="inherit" size="small" onClick={() => refetch()}>Retry</Button>}
+          >
+            Could not load leads. The rows below may be from your previous view.
+          </Alert>
+        )}
+
         <TableContainer>
           <Table stickyHeader size="small">
             <TableHead>
@@ -357,7 +398,7 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
                   <SortableCell key={c.key} field={c.sort} sort={sort} onSort={toggleSort}>{c.label}</SortableCell>
                 ))}
                 {showActions && (
-                  <TableCell align="right" sx={{ width: 108, pr: 2, whiteSpace: 'nowrap' }}>Actions</TableCell>
+                  <TableCell align="right" sx={{ ...STICKY_ACTION_COL, width: 108, pr: 2, whiteSpace: 'nowrap', zIndex: 3 }}>Actions</TableCell>
                 )}
               </TableRow>
             </TableHead>
@@ -379,31 +420,17 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
                     </TableCell>
                   ))}
                   {showActions && (
-                    <TableCell align="right" sx={{ pr: 2, whiteSpace: 'nowrap' }}>
-                      {assignedOnly ? (
-                        <IconButton size="small" onClick={(e) => setRowMenu({ el: e.currentTarget, lead: l })}><MoreVertIcon fontSize="small" /></IconButton>
-                      ) : canAssignAction && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => openSingleAssign(l)}
-                          sx={{
-                            minHeight: 28,
-                            minWidth: 72,
-                            px: 1.5,
-                            fontSize: '0.75rem',
-                            lineHeight: 1.6,
-                            borderColor: 'divider',
-                            color: 'primary.main',
-                            '&:hover': {
-                              borderColor: 'primary.main',
-                              bgcolor: 'action.hover',
-                            },
-                          }}
-                        >
-                          Assign
-                        </Button>
-                      )}
+                    <TableCell align="right" sx={{ ...STICKY_ACTION_COL, pr: 2, whiteSpace: 'nowrap' }}>
+                      <RowActions
+                        actions={[
+                          {
+                            label: assignVerb,
+                            onClick: () => openSingleAssign(l),
+                            // Converted leads are closed records — no reassignment.
+                            hidden: !canAssignAction || l.status === 'CONVERTED',
+                          },
+                        ]}
+                      />
                     </TableCell>
                   )}
                 </TableRow>
@@ -429,52 +456,6 @@ export default function LeadsPage({ assignedOnly }: { assignedOnly?: boolean }) 
           showFirstButton showLastButton
         />
       </Card>
-
-      <Menu anchorEl={rowMenu?.el} open={!!rowMenu} onClose={() => setRowMenu(null)}>
-        {assignedOnly && <MenuItem onClick={() => rowMenu && navigate(`/leads/${rowMenu.lead.id}`)}>Open details</MenuItem>}
-        {canAssignAction && <MenuItem onClick={() => rowMenu && openSingleAssign(rowMenu.lead)}>{assignVerb}…</MenuItem>}
-        {assignedOnly && canEdit && <Divider />}
-        {assignedOnly && canEdit && <MenuItem disabled sx={{ opacity: 1, fontSize: 12, color: 'text.secondary' }}>Convert to external lead</MenuItem>}
-        {assignedOnly && canEdit && EXTERNAL_LEAD_TYPES.map((t) => (
-          <MenuItem
-            key={t}
-            onClick={() => { if (rowMenu) setConvertTarget({ lead: rowMenu.lead, type: t }); setRowMenu(null); }}
-          >
-            {prettyLabel(t)}
-          </MenuItem>
-        ))}
-      </Menu>
-
-      <Dialog open={!!convertTarget} onClose={() => setConvertTarget(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Convert to {convertTarget ? prettyLabel(convertTarget.type) : ''} lead?</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2">
-            “{convertTarget?.lead.company || [convertTarget?.lead.firstName, convertTarget?.lead.lastName].filter(Boolean).join(' ') || 'This lead'}”
-            {' '}will be moved out of the exhibitor pipeline and queued straight for sync to the
-            {' '}{prettyLabel(convertTarget?.type ?? 'VISITOR')} panel. It will no longer appear in Lead Management,
-            and it skips Brochure Data because it is already queued.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConvertTarget(null)}>Cancel</Button>
-          <Button
-            variant="contained" disabled={convertLoading}
-            onClick={async () => {
-              if (!convertTarget) return;
-              try {
-                await convertExternal({ id: convertTarget.lead.id, type: convertTarget.type }).unwrap();
-                setToast({ msg: `Queued for sync to the ${prettyLabel(convertTarget.type)} panel`, sev: 'success' });
-              } catch {
-                setToast({ msg: 'Conversion failed', sev: 'error' });
-              } finally {
-                setConvertTarget(null);
-              }
-            }}
-          >
-            Convert
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog open={archiveOpen} onClose={() => setArchiveOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Move {selectedConverted} converted lead(s) to Historical?</DialogTitle>
@@ -553,10 +534,10 @@ function leadDateCell(l: Lead) {
 
   const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000);
-  const label = days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString();
+  const label = days === 0 ? 'Today' : days === 1 ? 'Yesterday' : formatDate(d);
 
   return (
-    <Tooltip title={`${d.toLocaleString()}${l.createDate ? '' : ' (date added)'}`}>
+    <Tooltip title={`${formatDateTime(d)}${l.createDate ? '' : ' (date added)'}`}>
       <Typography variant="body2" sx={{ whiteSpace: 'nowrap', fontWeight: days === 0 ? 700 : 400 }} color={days === 0 ? 'primary.main' : 'inherit'}>
         {label}
       </Typography>
@@ -572,6 +553,16 @@ function renderCell(key: string, l: Lead) {
       ? <Tooltip title={l.industry}><Typography variant="body2" noWrap sx={{ maxWidth: 220 }}>{l.industry}</Typography></Tooltip>
       : '—';
     case 'status': return <StatusChip status={l.status} />;
+    case 'bookedSpace': {
+      if (!l.sqmSpace) return '—';
+      const kind = l.sqmSpaceType === 'RAW' ? 'Raw' : l.sqmSpaceType === 'SHELL' ? 'Shell' : null;
+      return (
+        <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+          {l.sqmSpace} sqm
+          {kind && <Chip label={kind} size="small" variant="outlined" sx={{ ml: 0.75, height: 18 }} />}
+        </Typography>
+      );
+    }
     case 'assignedUser': return l.assignedUser ? `${l.assignedUser.firstName} ${l.assignedUser.lastName}` : <Chip label="Unassigned" size="small" variant="outlined" />;
     case 'source': {
       const label = l.sourceChannel ? sourceChannelLabel(l.sourceChannel) : (l.source ? prettyLabel(l.source) : '');

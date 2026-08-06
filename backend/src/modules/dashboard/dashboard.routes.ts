@@ -8,6 +8,9 @@ import { dashboardService, type DashFilter } from './dashboard.service';
 const router = Router();
 router.use(authenticate);
 
+const TEAM_WIDE_LEVEL = 2;
+const isSelfOnly = (req: Request) => (req.user?.level ?? 99) > TEAM_WIDE_LEVEL;
+
 function parseFilter(req: Request): DashFilter {
   const q = req.query;
   const toDate = (v: unknown) => {
@@ -15,20 +18,25 @@ function parseFilter(req: Request): DashFilter {
     const d = new Date(String(v));
     return Number.isNaN(d.getTime()) ? undefined : d;
   };
+  const selfOnly = isSelfOnly(req);
   return {
     dateFrom: toDate(q.dateFrom),
     dateTo: toDate(q.dateTo),
     eventName: q.eventName ? String(q.eventName) : undefined,
     country: q.country ? String(q.country) : undefined,
-    teamId: q.teamId ? String(q.teamId) : undefined,
-    userId: q.userId ? String(q.userId) : undefined,
+    teamId: selfOnly ? undefined : q.teamId ? String(q.teamId) : undefined,
+    userId: selfOnly ? req.user!.id : q.userId ? String(q.userId) : undefined,
   };
 }
 
 const dashView = requirePermission('dashboard.view');
 const analyticsView = requireAnyPermission('analytics.view', 'dashboard.view');
 
-router.get('/filters', dashView, asyncHandler(async (_req, res) => ok(res, await dashboardService.filters())));
+router.get('/filters', dashView, asyncHandler(async (req, res) => {
+  const refs = await dashboardService.filters();
+  if (!isSelfOnly(req)) return ok(res, refs);
+  return ok(res, { ...refs, teams: [], members: refs.members.filter((m) => m.id === req.user!.id) });
+}));
 router.get('/summary', dashView, asyncHandler(async (req, res) => ok(res, await dashboardService.summary(parseFilter(req)))));
 router.get('/funnel', dashView, asyncHandler(async (req, res) => ok(res, await dashboardService.funnel(parseFilter(req)))));
 router.get('/by-event', dashView, asyncHandler(async (req, res) => ok(res, await dashboardService.byEvent(parseFilter(req)))));
@@ -36,6 +44,7 @@ router.get('/by-source', dashView, asyncHandler(async (req, res) => ok(res, awai
 router.get('/by-country', dashView, asyncHandler(async (req, res) => ok(res, await dashboardService.byCountry(parseFilter(req)))));
 router.get('/trends/daily', dashView, asyncHandler(async (req, res) => ok(res, await dashboardService.dailyTrend(parseFilter(req), Number(req.query.days) || 30))));
 router.get('/trends/monthly', dashView, asyncHandler(async (req, res) => ok(res, await dashboardService.monthlyTrend(parseFilter(req), Number(req.query.months) || 12))));
+router.get('/conversion-by-source', analyticsView, asyncHandler(async (req, res) => ok(res, await dashboardService.conversionBySource(parseFilter(req)))));
 router.get('/team-performance', analyticsView, asyncHandler(async (req, res) => ok(res, await dashboardService.teamPerformance(parseFilter(req)))));
 router.get('/leaderboard', analyticsView, asyncHandler(async (req, res) => ok(res, (await dashboardService.teamPerformance(parseFilter(req))).slice(0, 10))));
 

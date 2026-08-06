@@ -27,6 +27,13 @@ interface FiltersRef {
 const clean = (f?: DashFilter | void) =>
   Object.fromEntries(Object.entries((f as DashFilter | undefined) ?? {}).filter(([, v]) => v !== undefined && v !== '' && v !== null));
 
+export interface ConversionBySource {
+  key: string;
+  total: number;
+  converted: number;
+  conversionRate: number;
+}
+
 export const dashboardApi = api.injectEndpoints({
   endpoints: (build) => ({
     dashFilters: build.query<ApiEnvelope<FiltersRef>, void>({ query: () => '/dashboard/filters', providesTags: ['Dashboard'] }),
@@ -37,6 +44,7 @@ export const dashboardApi = api.injectEndpoints({
     byCountry: build.query<ApiEnvelope<Dim[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/by-country', params: clean(f) }), providesTags: ['Dashboard'] }),
     dailyTrend: build.query<ApiEnvelope<DailyPoint[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/trends/daily', params: clean(f) }), providesTags: ['Dashboard'] }),
     monthlyTrend: build.query<ApiEnvelope<MonthlyPoint[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/trends/monthly', params: clean(f) }), providesTags: ['Dashboard'] }),
+    conversionBySource: build.query<ApiEnvelope<ConversionBySource[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/conversion-by-source', params: clean(f) }), providesTags: ['Dashboard'] }),
     teamPerformance: build.query<ApiEnvelope<TeamPerf[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/team-performance', params: clean(f) }), providesTags: ['Dashboard'] }),
   }),
 });
@@ -50,5 +58,6 @@ export const {
   useByCountryQuery,
   useDailyTrendQuery,
   useMonthlyTrendQuery,
+  useConversionBySourceQuery,
   useTeamPerformanceQuery,
 } = dashboardApi;

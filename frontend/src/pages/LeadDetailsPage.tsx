@@ -4,11 +4,15 @@ import {
   Box, Grid, Card, CardContent, CardHeader, Typography, Stack, Chip, Divider, TextField,
   Button, MenuItem, Select, FormControl, InputLabel, List, ListItem, ListItemText, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, Alert,
+  Radio, RadioGroup, FormControlLabel, FormLabel,
 } from '@mui/material';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import EditIcon from '@mui/icons-material/Edit';
+import LeadEditDialog from '@/components/LeadEditDialog';
 import StatusChip from '@/components/StatusChip';
 import {
-  LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES, prettyLabel, sentenceCase, sourceChannelLabel,
+  LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES, prettyLabel, sentenceCase, statusLabel, sourceChannelLabel,
+  formatDate, formatDateTime,
   type ExternalLeadType,
 } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -17,6 +21,7 @@ import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGua
 import {
   useGetLeadQuery, useChangeStatusMutation, useAddNoteMutation,
   useScheduleFollowupMutation, useConvertExternalMutation, useAssignSingleMutation,
+  useLeadEditHistoryQuery,
 } from '@/features/leads/leadsApi';
 import { useListUsersQuery } from '@/features/adminApi';
 
@@ -39,10 +44,14 @@ export default function LeadDetailsPage() {
   const [status, setStatus] = useState('');
   const [remark, setRemark] = useState('');
   const [sqmSpace, setSqmSpace] = useState('');
+  const [spaceType, setSpaceType] = useState<'RAW' | 'SHELL'>('SHELL');
   const [fuDate, setFuDate] = useState('');
   const [fuTime, setFuTime] = useState('');
   const [convertType, setConvertType] = useState<ExternalLeadType | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const canEdit = has('lead.edit');
+  const { data: editHistory } = useLeadEditHistoryQuery(id, { skip: !id });
 
   if (isLoading) return <DetailSkeleton />;
   const lead = data?.data;
@@ -51,11 +60,22 @@ export default function LeadDetailsPage() {
   const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || '—';
   const isAssigned = !!lead.assignedUser;
 
+  // A converted lead is closed: no edit, reassign, status change or reclassify.
+  // The server enforces this too; here it just keeps the controls out of the way.
+  const isConverted = lead.status === 'CONVERTED';
+  const spaceKind = lead.sqmSpaceType === 'RAW' ? 'Raw space'
+    : lead.sqmSpaceType === 'SHELL' ? 'Shell space' : null;
+  const bookedSpace = lead.sqmSpace
+    ? `${lead.sqmSpace} sqm${spaceKind ? ` · ${spaceKind}` : ''}`
+    : null;
+  const canModify = canEdit && !isConverted;
+
   const pad2 = (n: number) => String(n).padStart(2, '0');
   const nowD = new Date();
   const todayStr = `${nowD.getFullYear()}-${pad2(nowD.getMonth() + 1)}-${pad2(nowD.getDate())}`;
   const nowTimeStr = `${pad2(nowD.getHours())}:${pad2(nowD.getMinutes())}`;
   const fuTimeInvalid = fuDate === todayStr && !!fuTime && fuTime < nowTimeStr;
+  const sqmValid = /^\s*\d+(\.\d+)?\s*$/.test(sqmSpace);
   const members = [...(users?.data ?? [])]
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
@@ -79,10 +99,27 @@ export default function LeadDetailsPage() {
         {lead.priority && <Chip size="small" label={sentenceCase(lead.priority)} variant="outlined" />}
       </Stack>
 
+      {isConverted && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {bookedSpace
+            ? `Converted — ${bookedSpace} booked.`
+            : 'Converted.'}{' '}
+          It is now a closed record — it cannot be edited, reassigned, reclassified,
+          or moved to another status.
+        </Alert>
+      )}
+
       <Grid container spacing={2.5}>
         <Grid item xs={12} md={4}>
           <Card>
-            <CardHeader title="Lead Information" />
+            <CardHeader
+              title="Lead Information"
+              action={canModify && (
+                <Button size="small" startIcon={<EditIcon fontSize="small" />} onClick={() => setEditOpen(true)}>
+                  Edit
+                </Button>
+              )}
+            />
             <CardContent>
               <Field label="Contact" value={fullName} />
               <Field label="Designation" value={lead.designation} />
@@ -94,11 +131,14 @@ export default function LeadDetailsPage() {
               <Field label="Country" value={lead.country} />
               <Field label="City" value={lead.city} />
               <Field label="Source" value={lead.sourceChannel ? sourceChannelLabel(lead.sourceChannel) : lead.learnAbout} />
+              {lead.eventName && <Field label="Event" value={lead.eventName} />}
+              {lead.shellSpace && <Field label="Space enquired" value={lead.shellSpace} />}
               <Field label="Assigned To" value={lead.assignedUser ? `${lead.assignedUser.firstName} ${lead.assignedUser.lastName}` : 'Unassigned'} />
+              {bookedSpace && <Field label="Space booked" value={bookedSpace} />}
             </CardContent>
           </Card>
 
-          {has('lead.edit') && (
+          {canModify && (
             <Card sx={{ mt: 2.5 }}>
               <CardHeader
                 title="Reclassify lead"
@@ -126,7 +166,7 @@ export default function LeadDetailsPage() {
                 {isAssigned ? (
                   <Stack spacing={1} sx={{ mb: 2 }}>
                     <Chip size="small" color="primary" sx={{ alignSelf: 'flex-start' }} label={`${lead.assignedUser!.firstName} ${lead.assignedUser!.lastName}`} />
-                    {isSuperAdmin && (
+                    {isSuperAdmin && !isConverted && (
                       <Stack direction="row" spacing={1}>
                         <FormControl size="small" fullWidth>
                           <InputLabel>Reassign to</InputLabel>
@@ -138,7 +178,7 @@ export default function LeadDetailsPage() {
                       </Stack>
                     )}
                   </Stack>
-                ) : canAssign ? (
+                ) : canAssign && !isConverted ? (
                   <Stack spacing={1} sx={{ mb: 2 }}>
                     <FormControl size="small" fullWidth>
                       <InputLabel>Assign to</InputLabel>
@@ -153,19 +193,19 @@ export default function LeadDetailsPage() {
                 )}
                 <Divider sx={{ mb: 2 }} />
 
-                {has('lead.edit') && !isAssigned && (
+                {canModify && !isAssigned && (
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     Assign this lead to a member before updating its status.
                   </Typography>
                 )}
-                {has('lead.edit') && isAssigned && (
+                {canModify && isAssigned && (
                   <>
                     <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Update Status</Typography>
                     <Stack spacing={1.5} sx={{ mb: 2 }}>
                       <FormControl size="small" fullWidth>
                         <InputLabel>New status</InputLabel>
                         <Select label="New status" value={status} onChange={(e) => setStatus(e.target.value)}>
-                          {LEAD_DETAIL_STATUS_OPTIONS.map((s) => <MenuItem key={s} value={s}>{sentenceCase(s)}</MenuItem>)}
+                          {LEAD_DETAIL_STATUS_OPTIONS.map((s) => <MenuItem key={s} value={s}>{statusLabel(s)}</MenuItem>)}
                         </Select>
                       </FormControl>
 
@@ -187,13 +227,34 @@ export default function LeadDetailsPage() {
                         </Stack>
                       )}
 
-                      {/* Space booked — required when converting. */}
+                      {/* Space booked — the kind of space, then how much of it. */}
                       {status === 'CONVERTED' && (
-                        <TextField
-                          size="small" fullWidth required label="Sqm / Space"
-                          placeholder="e.g. 54 sqm" value={sqmSpace} onChange={(e) => setSqmSpace(e.target.value)}
-                          error={!sqmSpace} helperText={!sqmSpace ? 'Required to convert' : ' '}
-                        />
+                        <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
+                          <FormControl>
+                            <FormLabel sx={{ fontSize: 13, fontWeight: 600 }}>Space booked</FormLabel>
+                            <RadioGroup
+                              row
+                              value={spaceType}
+                              onChange={(e) => setSpaceType(e.target.value as 'RAW' | 'SHELL')}
+                            >
+                              <FormControlLabel value="RAW" control={<Radio size="small" />} label="Raw space" />
+                              <FormControlLabel value="SHELL" control={<Radio size="small" />} label="Shell space" />
+                            </RadioGroup>
+                          </FormControl>
+                          <TextField
+                            size="small" fullWidth required label="Area booked (sqm)" type="number"
+                            placeholder="e.g. 54" value={sqmSpace}
+                            onChange={(e) => setSqmSpace(e.target.value)}
+                            inputProps={{ min: 0, step: 'any' }}
+                            error={!!sqmSpace && !sqmValid}
+                            helperText={
+                              !sqmSpace ? 'Required to convert'
+                                : !sqmValid ? 'Enter a number, e.g. 54'
+                                  : `${sqmSpace} sqm of ${spaceType === 'RAW' ? 'raw' : 'shell'} space`
+                            }
+                            sx={{ mt: 1 }}
+                          />
+                        </Box>
                       )}
 
                       {/* Remark travels with every status update. */}
@@ -201,11 +262,12 @@ export default function LeadDetailsPage() {
 
                       <Button
                         variant="contained"
-                        disabled={!status || changing || scheduling || adding || (status === 'FOLLOW_UP' && (!fuDate || fuTimeInvalid)) || (status === 'CONVERTED' && !sqmSpace.trim())}
+                        disabled={!status || changing || scheduling || adding || (status === 'FOLLOW_UP' && (!fuDate || fuTimeInvalid)) || (status === 'CONVERTED' && !sqmValid)}
                         onClick={async () => {
                           await changeStatus({
                             id, status, reason: remark || undefined,
-                            sqmSpace: status === 'CONVERTED' ? sqmSpace : undefined,
+                            sqmSpace: status === 'CONVERTED' ? sqmSpace.trim() : undefined,
+                            sqmSpaceType: status === 'CONVERTED' ? spaceType : undefined,
                           }).unwrap();
                           if (status === 'FOLLOW_UP') {
                             await scheduleFollowup({
@@ -225,7 +287,7 @@ export default function LeadDetailsPage() {
                 )}
                 <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Follow-ups</Typography>
                 <Timeline items={lead.followups.map((f) => ({
-                  primary: `${new Date(f.followupDate).toLocaleDateString()}${f.followupTime ? ` ${f.followupTime} IST` : ''} · ${f.priority}`,
+                  primary: `${formatDate(f.followupDate)}${f.followupTime ? ` ${f.followupTime} IST` : ''} · ${f.priority}`,
                   secondary: `${f.status}${f.note ? ' · ' + f.note : ''}`,
                 }))} empty="No follow-ups scheduled" />
               </CardContent>
@@ -234,9 +296,17 @@ export default function LeadDetailsPage() {
             <Card>
               <CardHeader title="Remarks" />
               <CardContent sx={{ pt: 0 }}>
+                {lead.remarks && (
+                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                      From the lead record
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{lead.remarks}</Typography>
+                  </Box>
+                )}
                 <Timeline items={lead.notes.map((n) => ({
                   primary: n.body,
-                  secondary: `${new Date(n.createdAt).toLocaleString()}${n.author ? ' · ' + n.author.firstName + ' ' + n.author.lastName : ''}`,
+                  secondary: `${formatDateTime(n.createdAt)}${n.author ? ' · ' + n.author.firstName + ' ' + n.author.lastName : ''}`,
                 }))} empty="No remarks yet" />
               </CardContent>
             </Card>
@@ -252,8 +322,8 @@ export default function LeadDetailsPage() {
                 <Timeline items={lead.statusHistory.map((h) => {
                   const reason = h.reason && h.reason !== 'Auto on assignment' ? ' · ' + h.reason : '';
                   return {
-                    primary: `${h.fromStatus ?? '—'} → ${h.toStatus}`,
-                    secondary: `${new Date(h.createdAt).toLocaleString()}${h.changedBy ? ' · ' + h.changedBy.firstName + ' ' + h.changedBy.lastName : ''}${reason}`,
+                    primary: `${h.fromStatus ? statusLabel(h.fromStatus) : '—'} → ${statusLabel(h.toStatus)}`,
+                    secondary: `${formatDateTime(h.createdAt)}${h.changedBy ? ' · ' + h.changedBy.firstName + ' ' + h.changedBy.lastName : ''}${reason}`,
                   };
                 })} empty="No status changes yet" />
               </CardContent>
@@ -264,13 +334,32 @@ export default function LeadDetailsPage() {
               <CardContent sx={{ pt: 0 }}>
                 <Timeline items={lead.assignments.map((a) => ({
                   primary: a.assignedTo ? `${a.assignedTo.firstName} ${a.assignedTo.lastName}` : '—',
-                  secondary: `${new Date(a.createdAt).toLocaleString()}${a.assignedBy ? ' · by ' + a.assignedBy.firstName : ''}`,
+                  secondary: `${formatDateTime(a.createdAt)}${a.assignedBy ? ' · by ' + a.assignedBy.firstName : ''}`,
                 }))} empty="Not assigned yet" />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader title="Edit History" />
+              <CardContent sx={{ pt: 0 }}>
+                <Timeline items={(editHistory?.data ?? []).map((e) => ({
+                  primary: e.changes.map((c) => `${c.label}: ${c.from ?? '—'} → ${c.to ?? '—'}`).join('\n'),
+                  secondary: `${formatDateTime(e.createdAt)}${e.editedBy ? ' · ' + e.editedBy.firstName + ' ' + e.editedBy.lastName : ''}`,
+                }))} empty="No edits yet" />
               </CardContent>
             </Card>
           </Stack>
         </Grid>
       </Grid>
+
+      {canModify && editOpen && (
+        <LeadEditDialog
+          lead={lead}
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          onSaved={(changed) => setToast(changed ? 'Lead updated' : 'No changes to save')}
+        />
+      )}
 
       {/* convert-to-external confirm */}
       <Dialog open={!!convertType} onClose={() => setConvertType(null)} maxWidth="xs" fullWidth>
@@ -330,7 +419,11 @@ function Timeline({ items, empty }: { items: Array<{ primary: string; secondary:
     <List dense disablePadding>
       {items.map((it, i) => (
         <ListItem key={i} sx={{ borderLeft: 2, borderColor: 'primary.main', pl: 2, mb: 1 }}>
-          <ListItemText primary={it.primary} secondary={it.secondary} />
+          <ListItemText
+            primary={it.primary}
+            secondary={it.secondary}
+            primaryTypographyProps={{ sx: { whiteSpace: 'pre-line' } }}
+          />
         </ListItem>
       ))}
     </List>

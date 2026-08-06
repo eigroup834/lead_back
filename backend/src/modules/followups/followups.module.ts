@@ -48,6 +48,9 @@ const LEAD_INCLUDE = {
       id: true, company: true, firstName: true, lastName: true, email: true, mobile: true,
       phone: true, designation: true, country: true, city: true, eventName: true,
       status: true, priority: true,
+      // Kept in step with the Assigned Leads columns so both tables show the same lead facts.
+      createdAt: true, createDate: true, shellSpace: true, industry: true,
+      sourceChannel: true, source: true,
       assignedUser: { select: { id: true, firstName: true, lastName: true } },
     },
   },

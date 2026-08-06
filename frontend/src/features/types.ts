@@ -28,6 +28,8 @@ export interface Lead {
   assignedUser?: { id: string; firstName: string; lastName: string } | null;
   shellSpace: string | null;
   rawSpace: string | null;
+  sqmSpace: string | null;
+  sqmSpaceType: string | null;
   remarks: string | null;
   industry: string | null;
   createDate: string | null;
@@ -60,6 +62,8 @@ export interface DashboardSummary {
   converted: number;
   lost: number;
   conversionRate: number;
+  spaceBooked: number;
+  spaceUnknown: number;
 }
 
 export interface TeamPerf {
@@ -70,4 +74,5 @@ export interface TeamPerf {
   calls: number;
   followupsDone: number;
   conversionRate: number;
+  spaceBooked: number;
 }

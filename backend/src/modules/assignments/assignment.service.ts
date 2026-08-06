@@ -5,6 +5,7 @@ import { cache } from '@services/cache.service';
 import { AppError } from '@utils/AppError';
 import { assertAssignableUser, filterAssignableUsers } from '@services/user.guard';
 import { notifyAssignments } from './assignment.mailer';
+import { assertNotConverted } from '@modules/leads/leads.service';
 import type { AssignBulkInput, AssignSingleInput, AutoAssignInput } from './assignment.validator';
 
 async function nextRoundRobinIndex(poolKey: string, poolSize: number): Promise<number> {
@@ -23,6 +24,8 @@ async function assignOne(
 ) {
   const existing = await tx.lead.findUnique({ where: { id: leadId }, select: { status: true, assignedUserId: true } });
   if (!existing) return false;
+  // Converted leads are closed records — skip rather than reassign.
+  if (existing.status === 'CONVERTED') return false;
   const realType = existing.assignedUserId && existing.assignedUserId !== assignToId ? 'REASSIGN' : type;
 
   await tx.lead.update({
@@ -53,6 +56,10 @@ async function bustDashboard() {
 export const assignmentService = {
   async single(input: AssignSingleInput, byId: string) {
     await assertAssignableUser(input.assignToId);
+    const lead = await prisma.lead.findUnique({ where: { id: input.leadId }, select: { status: true } });
+    if (!lead) throw AppError.notFound('Lead not found');
+    assertNotConverted(lead);
+
     await prisma.$transaction((tx) => assignOne(tx, input.leadId, input.assignToId, byId, 'SINGLE', 'MANUAL', input.note));
     await bustDashboard();
     notifyAssignments([input.leadId], input.assignToId, byId);
@@ -61,14 +68,22 @@ export const assignmentService = {
 
   async bulk(input: AssignBulkInput, byId: string) {
     await assertAssignableUser(input.assignToId);
+    const assigned: string[] = [];
     await prisma.$transaction(async (tx) => {
       for (const leadId of input.leadIds) {
-        await assignOne(tx, leadId, input.assignToId, byId, 'BULK', 'MANUAL', input.note);
+        if (await assignOne(tx, leadId, input.assignToId, byId, 'BULK', 'MANUAL', input.note)) {
+          assigned.push(leadId);
+        }
       }
     });
     await bustDashboard();
-    notifyAssignments(input.leadIds, input.assignToId, byId);
-    return { count: input.leadIds.length, assignedTo: input.assignToId };
+    // Only mail about leads that were actually assigned.
+    if (assigned.length) notifyAssignments(assigned, input.assignToId, byId);
+    return {
+      count: assigned.length,
+      skipped: input.leadIds.length - assigned.length,
+      assignedTo: input.assignToId,
+    };
   },
 
   async auto(input: AutoAssignInput, byId: string) {

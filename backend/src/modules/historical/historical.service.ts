@@ -19,6 +19,51 @@ function historicalScope(user: AuthUser): Prisma.HistoricalLeadWhereInput {
   return user.level === 1 ? {} : { assignedUserId: user.id };
 }
 
+export function carryOverRemarks(r: Prisma.HistoricalLeadGetPayload<object>): string | null {
+  const parts: string[] = [];
+  if (r.remark?.trim()) parts.push(r.remark.trim());
+  if (r.specialRemarks?.trim()) parts.push(`Special remarks: ${r.specialRemarks.trim()}`);
+
+  const extras: Array<[string, unknown]> = [
+    ['Event year', r.eventYear],
+    ['Branch office', r.branchOffice],
+    ['Historical code', r.histCode],
+    ['Last contact (meet)', r.lastContactMeet],
+    ['Last contact (email)', r.lastContactEmail],
+    ['Last contact (mobile)', r.lastContactMobile],
+    ['Date of confirmation', r.dateOfConfirmation ? r.dateOfConfirmation.toISOString().slice(0, 10) : null],
+  ];
+  const listed = extras
+    .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+    .map(([k, v]) => `${k}: ${String(v).trim()}`);
+  if (listed.length) parts.push(listed.join(' | '));
+
+  const history = Array.isArray(r.exhHistory) ? (r.exhHistory as Array<{ year?: unknown; sqm_spo?: unknown }>) : [];
+  const historyText = history
+    .filter((h) => h && (h.year || h.sqm_spo))
+    .map((h) => `${h.year ?? '?'}: ${h.sqm_spo ?? '—'}`)
+    .join(', ');
+  if (historyText) parts.push(`Exhibition history — ${historyText}`);
+
+  return parts.length ? parts.join('\n') : null;
+}
+
+const HONORIFICS = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'eng', 'engr', 'sir', 'madam', 'mx']);
+
+export function splitName(full: string | null): { title: string | null; firstName: string | null; lastName: string | null } {
+  const trimmed = full?.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return { title: null, firstName: null, lastName: null };
+
+  const words = trimmed.split(' ');
+  let title: string | null = null;
+  if (words.length > 1 && HONORIFICS.has(words[0].replace(/\.$/, '').toLowerCase())) {
+    title = words.shift() ?? null;
+  }
+  if (!words.length) return { title, firstName: null, lastName: null };
+  const firstName = words.shift() ?? null;
+  return { title, firstName, lastName: words.join(' ') || null };
+}
+
 async function assertEditable(user: AuthUser, id: string) {
   const record = await prisma.historicalLead.findFirst({ where: { id, deletedAt: null } });
   if (!record) throw AppError.notFound('Historical lead not found');
@@ -155,17 +200,27 @@ export const historicalService = {
       if (!(r.company || r.email || r.name || r.mobile)) { skipped += 1; continue; }
       const assignedTo = r.assignedUserId;
       await prisma.$transaction(async (tx) => {
+        const { title, firstName, lastName } = splitName(r.name);
         const lead = await tx.lead.create({
           data: {
             company: r.company,
-            firstName: r.name,
+            title,
+            firstName,
+            lastName,
             designation: r.designation,
             email: r.email,
             mobile: r.mobile,
+            altEmail: r.altEmail,
+            altMobile: r.altMobile,
             city: r.city,
             country: r.country,
+            industry: r.industry,
+            shellSpace: r.spaceSqm,
+            remarks: carryOverRemarks(r),
             eventName: r.eventName,
+            createDate: r.dateOfConfirmation,
             source: 'HISTORICAL',
+            sourceChannel: 'HISTORICAL',
             leadType: 'EXHIBITION',
             status: assignedTo ? 'ASSIGNED' : 'NEW',
             assignedUserId: assignedTo,

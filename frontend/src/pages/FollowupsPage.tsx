@@ -6,27 +6,28 @@ import {
   TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Toolbar, Tooltip,
   Typography,
 } from '@mui/material';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import EventRepeatIcon from '@mui/icons-material/EventRepeat';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import PhoneIcon from '@mui/icons-material/Phone';
-import EmailIcon from '@mui/icons-material/Email';
 import StatusChip from '@/components/StatusChip';
-import { LEAD_STATUSES, FOLLOWUP_SCOPES, PRIORITIES, PRIORITY_COLOR, sentenceCase } from '@/constants';
+import {
+  LEAD_STATUSES, FOLLOWUP_SCOPES, PRIORITIES, PRIORITY_COLOR,
+  sentenceCase, statusLabel, sourceChannelLabel, prettyLabel, formatDate, formatDateTime,
+} from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
-  useListFollowupsQuery, useFollowupCountsQuery, useUpdateFollowupMutation, useListUsersQuery, type FollowupRow,
+  useListFollowupsQuery, useFollowupCountsQuery, useUpdateFollowupMutation, useListUsersQuery,
+  type FollowupRow, type FollowupLead,
 } from '@/features/adminApi';
 import { useChangeStatusMutation } from '@/features/leads/leadsApi';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import RowActions, { STICKY_ACTION_COL } from '@/components/RowActions';
 import { SkeletonRows } from '@/components/Skeletons';
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const isOverdue = (iso: string) => new Date(iso) < startOfToday();
 
-type FollowupSortKey = 'company' | 'reach' | 'event' | 'status' | 'followupDate' | 'priority' | 'assignee' | 'note';
+type FollowupSortKey =
+  | 'leadDate' | 'company' | 'contact' | 'email' | 'mobile' | 'country' | 'shellSpace'
+  | 'industry' | 'source' | 'status' | 'assignee' | 'followupDate' | 'priority' | 'note';
 
 const rank = (list: readonly string[], v?: string) => {
   const i = list.indexOf(v ?? '');
@@ -34,15 +35,49 @@ const rank = (list: readonly string[], v?: string) => {
 };
 
 const SORT_VALUE: Record<FollowupSortKey, (f: FollowupRow) => string | number> = {
-  company: (f) => f.lead?.company || [f.lead?.firstName, f.lead?.lastName].filter(Boolean).join(' ') || '',
-  reach: (f) => f.lead?.mobile || f.lead?.email || '',
-  event: (f) => f.lead?.eventName || '',
+  leadDate: (f) => f.lead?.createDate ?? f.lead?.createdAt ?? '',
+  company: (f) => f.lead?.company || '',
+  contact: (f) => [f.lead?.firstName, f.lead?.lastName].filter(Boolean).join(' '),
+  email: (f) => f.lead?.email || '',
+  mobile: (f) => f.lead?.mobile || '',
+  country: (f) => f.lead?.country || '',
+  shellSpace: (f) => f.lead?.shellSpace || '',
+  industry: (f) => f.lead?.industry || '',
+  source: (f) => f.lead?.sourceChannel || f.lead?.source || '',
   status: (f) => rank(LEAD_STATUSES, f.lead?.status),
+  assignee: (f) => (f.lead?.assignedUser
+    ? `${f.lead.assignedUser.firstName} ${f.lead.assignedUser.lastName}`
+    : f.assignee ? `${f.assignee.firstName} ${f.assignee.lastName}` : ''),
   followupDate: (f) => `${f.followupDate}T${f.followupTime ?? ''}`,
   priority: (f) => rank(PRIORITIES, f.priority),
-  assignee: (f) => (f.assignee ? `${f.assignee.firstName} ${f.assignee.lastName}` : ''),
   note: (f) => f.note || '',
 };
+
+const COLUMN_COUNT = 15;
+
+function leadDateCell(lead?: FollowupLead) {
+  const iso = lead?.createDate ?? lead?.createdAt;
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+
+  const startOfDayMs = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDayMs(new Date()) - startOfDayMs(d)) / 86_400_000);
+  const label = days === 0 ? 'Today' : days === 1 ? 'Yesterday' : formatDate(d);
+
+  return (
+    <Tooltip title={`${formatDateTime(d)}${lead?.createDate ? '' : ' (date added)'}`}>
+      <Typography variant="body2" sx={{ whiteSpace: 'nowrap', fontWeight: days === 0 ? 700 : 400 }} color={days === 0 ? 'primary.main' : 'inherit'}>
+        {label}
+      </Typography>
+    </Tooltip>
+  );
+}
+
+function sourceCell(lead?: FollowupLead) {
+  const label = lead?.sourceChannel ? sourceChannelLabel(lead.sourceChannel) : (lead?.source ? prettyLabel(lead.source) : '');
+  return label ? <Chip label={label} size="small" variant="outlined" /> : '—';
+}
 
 export default function FollowupsPage() {
   const navigate = useNavigate();
@@ -52,15 +87,20 @@ export default function FollowupsPage() {
   const [scope, setScope] = useState('today');
   const [assigneeId, setAssigneeId] = useState('');
   const { sort, toggle: toggleSort } = useSort<FollowupSortKey>({ by: 'followupDate', dir: 'asc' });
-  const { data, isFetching } = useListFollowupsQuery({ scope, assigneeId: assigneeId || undefined });
-  const { data: countsData } = useFollowupCountsQuery({ assigneeId: assigneeId || undefined });
+  const { data, isFetching } = useListFollowupsQuery(
+    { scope, assigneeId: assigneeId || undefined },
+    { refetchOnMountOrArgChange: true },
+  );
+  const { data: countsData } = useFollowupCountsQuery(
+    { assigneeId: assigneeId || undefined },
+    { refetchOnMountOrArgChange: true },
+  );
   const { data: users } = useListUsersQuery({ limit: 100, status: 'ACTIVE' }, { skip: !isManager });
 
   const [update] = useUpdateFollowupMutation();
   const [changeStatus] = useChangeStatusMutation();
 
   const [statusMenu, setStatusMenu] = useState<{ el: HTMLElement; row: FollowupRow } | null>(null);
-  const [rowMenu, setRowMenu] = useState<{ el: HTMLElement; row: FollowupRow } | null>(null);
   const [reschedule, setReschedule] = useState<{ row: FollowupRow; date: string; time: string } | null>(null);
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
 
@@ -75,12 +115,6 @@ export default function FollowupsPage() {
   const todayStr = `${nowD.getFullYear()}-${pad2(nowD.getMonth() + 1)}-${pad2(nowD.getDate())}`;
   const nowTimeStr = `${pad2(nowD.getHours())}:${pad2(nowD.getMinutes())}`;
   const reTimeInvalid = reschedule?.date === todayStr && !!reschedule?.time && reschedule.time < nowTimeStr;
-
-  const markDone = async (row: FollowupRow) => {
-    try { await update({ id: row.id, status: 'DONE' }).unwrap(); setToast({ msg: 'Follow-up marked done', sev: 'success' }); }
-    catch { setToast({ msg: 'Could not update follow-up', sev: 'error' }); }
-    setRowMenu(null);
-  };
 
   const doReschedule = async () => {
     if (!reschedule?.date) return;
@@ -98,7 +132,7 @@ export default function FollowupsPage() {
     if (!row.lead) return;
     try {
       await changeStatus({ id: row.lead.id, status }).unwrap();
-      setToast({ msg: `Lead marked ${sentenceCase(status)}`, sev: 'success' });
+      setToast({ msg: `Lead marked ${statusLabel(status)}`, sev: 'success' });
     } catch { setToast({ msg: 'Could not change lead status', sev: 'error' }); }
     setStatusMenu(null);
   };
@@ -151,84 +185,110 @@ export default function FollowupsPage() {
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
-                <SortableCell field="company" sort={sort} onSort={toggleSort}>Company / Contact</SortableCell>
-                <SortableCell field="reach" sort={sort} onSort={toggleSort}>Reach</SortableCell>
-                <SortableCell field="event" sort={sort} onSort={toggleSort}>Event</SortableCell>
-                <SortableCell field="status" sort={sort} onSort={toggleSort}>Lead status</SortableCell>
+                <SortableCell field="leadDate" sort={sort} onSort={toggleSort}>Lead Date</SortableCell>
+                <SortableCell field="company" sort={sort} onSort={toggleSort}>Company</SortableCell>
+                <SortableCell field="contact" sort={sort} onSort={toggleSort}>Contact</SortableCell>
+                <SortableCell field="email" sort={sort} onSort={toggleSort}>Email</SortableCell>
+                <SortableCell field="mobile" sort={sort} onSort={toggleSort}>Mobile</SortableCell>
+                <SortableCell field="country" sort={sort} onSort={toggleSort}>Country</SortableCell>
+                <SortableCell field="shellSpace" sort={sort} onSort={toggleSort}>Shell Space</SortableCell>
+                <SortableCell field="industry" sort={sort} onSort={toggleSort}>Interest</SortableCell>
+                <SortableCell field="source" sort={sort} onSort={toggleSort}>Source</SortableCell>
+                <SortableCell field="status" sort={sort} onSort={toggleSort}>Status</SortableCell>
+                <SortableCell field="assignee" sort={sort} onSort={toggleSort}>Assigned To</SortableCell>
                 <SortableCell field="followupDate" sort={sort} onSort={toggleSort}>Follow-up</SortableCell>
                 <SortableCell field="priority" sort={sort} onSort={toggleSort}>Priority</SortableCell>
-                {isManager && <SortableCell field="assignee" sort={sort} onSort={toggleSort}>Assignee</SortableCell>}
-                <SortableCell field="note" sort={sort} onSort={toggleSort}>Note</SortableCell>
-                <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell>
+                <SortableCell field="note" sort={sort} onSort={toggleSort}>Remark</SortableCell>
+                <TableCell align="right" sx={{ ...STICKY_ACTION_COL, fontWeight: 700, pr: 2, zIndex: 3 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isFetching && rows.length === 0 && (
-                <SkeletonRows rows={8} columns={isManager ? 9 : 8} />
+                <SkeletonRows rows={8} columns={COLUMN_COUNT} />
               )}
               {rows.map((f) => {
                 const lead = f.lead;
                 const overdue = isOverdue(f.followupDate);
                 const name = [lead?.firstName, lead?.lastName].filter(Boolean).join(' ');
+                // The whole row opens the lead; cells with their own control stop the bubble.
+                const open = () => { if (lead) navigate(`/leads/${lead.id}`); };
+                const cell = { cursor: lead ? 'pointer' : 'default' };
                 return (
                   <TableRow key={f.id} hover>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{lead?.company || name || '—'}</Typography>
-                      {(lead?.company && name) ? (
-                        <Typography variant="caption" color="text.secondary">
-                          {name}{lead?.designation ? ` · ${lead.designation}` : ''}
-                        </Typography>
-                      ) : lead?.designation ? (
+                    <TableCell sx={cell} onClick={open}>{leadDateCell(lead)}</TableCell>
+                    <TableCell sx={cell} onClick={open}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{lead?.company || '—'}</Typography>
+                      {lead?.designation && (
                         <Typography variant="caption" color="text.secondary">{lead.designation}</Typography>
-                      ) : null}
+                      )}
                     </TableCell>
-                    <TableCell>
-                      <Stack spacing={0.25}>
-                        {lead?.mobile && (
-                          <Stack direction="row" spacing={0.5} alignItems="center">
-                            <PhoneIcon sx={{ fontSize: 13, color: 'text.disabled' }} />
-                            <Typography variant="caption">{lead.mobile}</Typography>
-                          </Stack>
-                        )}
-                        {lead?.email && (
-                          <Stack direction="row" spacing={0.5} alignItems="center">
-                            <EmailIcon sx={{ fontSize: 13, color: 'text.disabled' }} />
-                            <Typography variant="caption" noWrap sx={{ maxWidth: 180 }} title={lead.email}>{lead.email}</Typography>
-                          </Stack>
-                        )}
-                        {!lead?.mobile && !lead?.email && <Typography variant="caption" color="text.disabled">—</Typography>}
-                      </Stack>
+                    <TableCell sx={cell} onClick={open}><Typography variant="body2">{name || '—'}</Typography></TableCell>
+                    <TableCell sx={cell} onClick={open}>
+                      <Typography variant="caption" noWrap sx={{ display: 'block', maxWidth: 190 }} title={lead?.email ?? ''}>
+                        {lead?.email || '—'}
+                      </Typography>
                     </TableCell>
-                    <TableCell><Typography variant="caption">{lead?.eventName || '—'}</Typography></TableCell>
-                    <TableCell>
-                      <Tooltip title="Click to change lead status">
-                        <Box component="span" sx={{ cursor: 'pointer' }} onClick={(e) => setStatusMenu({ el: e.currentTarget, row: f })}>
-                          {lead ? <StatusChip status={lead.status as never} /> : '—'}
-                        </Box>
-                      </Tooltip>
+                    <TableCell sx={cell} onClick={open}><Typography variant="caption">{lead?.mobile || '—'}</Typography></TableCell>
+                    <TableCell sx={cell} onClick={open}><Typography variant="caption">{lead?.country || '—'}</Typography></TableCell>
+                    <TableCell sx={cell} onClick={open}><Typography variant="caption">{lead?.shellSpace || '—'}</Typography></TableCell>
+                    <TableCell sx={cell} onClick={open}>
+                      {lead?.industry
+                        ? <Tooltip title={lead.industry}><Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>{lead.industry}</Typography></Tooltip>
+                        : '—'}
                     </TableCell>
+                    <TableCell sx={cell} onClick={open}>{sourceCell(lead)}</TableCell>
                     <TableCell>
-                      <Typography variant="body2" color={overdue ? 'error.main' : 'text.primary'} sx={{ fontWeight: overdue ? 700 : 400 }}>
-                        {new Date(f.followupDate).toLocaleDateString()} {f.followupTime ?? ''}
+                      {lead?.status === 'CONVERTED' ? (
+                        <Tooltip title="Converted leads are closed and cannot change status">
+                          <Box component="span"><StatusChip status={lead.status as never} /></Box>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title="Click to change lead status">
+                          <Box
+                            component="span"
+                            sx={{ cursor: 'pointer' }}
+                            onClick={(e) => { e.stopPropagation(); setStatusMenu({ el: e.currentTarget, row: f }); }}
+                          >
+                            {lead ? <StatusChip status={lead.status as never} /> : '—'}
+                          </Box>
+                        </Tooltip>
+                      )}
+                    </TableCell>
+                    <TableCell sx={cell} onClick={open}>
+                      <Typography variant="caption">
+                        {lead?.assignedUser
+                          ? `${lead.assignedUser.firstName} ${lead.assignedUser.lastName}`
+                          : f.assignee ? `${f.assignee.firstName} ${f.assignee.lastName}` : '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={cell} onClick={open}>
+                      <Typography variant="body2" color={overdue ? 'error.main' : 'text.primary'} sx={{ fontWeight: overdue ? 700 : 400, whiteSpace: 'nowrap' }}>
+                        {formatDate(f.followupDate)} {f.followupTime ?? ''}
                       </Typography>
                       {overdue && <Typography variant="caption" color="error.main">Overdue</Typography>}
                     </TableCell>
-                    <TableCell><Chip size="small" label={sentenceCase(f.priority)} color={PRIORITY_COLOR[f.priority] ?? 'default'} /></TableCell>
-                    {isManager && (
-                      <TableCell><Typography variant="caption">{f.assignee ? `${f.assignee.firstName} ${f.assignee.lastName}` : '—'}</Typography></TableCell>
-                    )}
-                    <TableCell><Typography variant="caption" sx={{ display: 'block', maxWidth: 200 }} title={f.note ?? ''} noWrap>{f.note || '—'}</Typography></TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                        <IconButtonMenu onClick={(e) => setRowMenu({ el: e, row: f })} />
-                      </Stack>
+                    <TableCell sx={cell} onClick={open}>
+                      <Chip size="small" label={sentenceCase(f.priority)} color={PRIORITY_COLOR[f.priority] ?? 'default'} />
+                    </TableCell>
+                    <TableCell sx={cell} onClick={open}>
+                      <Typography variant="caption" sx={{ display: 'block', maxWidth: 200 }} title={f.note ?? ''} noWrap>{f.note || '—'}</Typography>
+                    </TableCell>
+                    <TableCell align="right" sx={{ ...STICKY_ACTION_COL, pr: 2 }}>
+                      <RowActions
+                        actions={[
+                          {
+                            label: 'Reschedule',
+                            onClick: () => setReschedule({ row: f, date: f.followupDate.slice(0, 10), time: f.followupTime ?? '' }),
+                          },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 );
               })}
               {!isFetching && rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={isManager ? 9 : 8} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                  <TableCell colSpan={COLUMN_COUNT} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                     No follow-ups in this view
                   </TableCell>
                 </TableRow>
@@ -245,22 +305,11 @@ export default function FollowupsPage() {
             selected={statusMenu?.row.lead?.status === s}
             onClick={() => statusMenu && applyLeadStatus(statusMenu.row, s)}
           >
-            {sentenceCase(s)}
+            {statusLabel(s)}
           </MenuItem>
         ))}
       </Menu>
 
-      <Menu anchorEl={rowMenu?.el} open={!!rowMenu} onClose={() => setRowMenu(null)}>
-        <MenuItem onClick={() => { if (rowMenu?.row.lead) navigate(`/leads/${rowMenu.row.lead.id}`); setRowMenu(null); }}>
-          <OpenInNewIcon fontSize="small" style={{ marginRight: 8 }} /> Open lead
-        </MenuItem>
-        <MenuItem onClick={() => { if (rowMenu) setReschedule({ row: rowMenu.row, date: rowMenu.row.followupDate.slice(0, 10), time: rowMenu.row.followupTime ?? '' }); setRowMenu(null); }}>
-          <EventRepeatIcon fontSize="small" style={{ marginRight: 8 }} /> Reschedule
-        </MenuItem>
-        <MenuItem onClick={() => rowMenu && markDone(rowMenu.row)}>
-          <CheckCircleOutlineIcon fontSize="small" style={{ marginRight: 8 }} /> Mark done
-        </MenuItem>
-      </Menu>
 
       <Dialog open={!!reschedule} onClose={() => setReschedule(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Reschedule follow-up</DialogTitle>
@@ -291,17 +340,5 @@ export default function FollowupsPage() {
         {toast ? <Alert severity={toast.sev} onClose={() => setToast(null)}>{toast.msg}</Alert> : undefined}
       </Snackbar>
     </Box>
-  );
-}
-
-function IconButtonMenu({ onClick }: { onClick: (el: HTMLElement) => void }) {
-  return (
-    <Tooltip title="More">
-      <span>
-        <Button size="small" sx={{ minWidth: 0, px: 1 }} onClick={(e) => onClick(e.currentTarget)}>
-          <MoreVertIcon fontSize="small" />
-        </Button>
-      </span>
-    </Tooltip>
   );
 }

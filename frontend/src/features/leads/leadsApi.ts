@@ -2,6 +2,20 @@ import { api } from '@/app/api';
 import type { ApiEnvelope, Lead, LeadDetail, PageMeta } from '@/features/types';
 import type { ExternalLeadType } from '@/constants';
 
+export interface LeadEditChange {
+  field: string;
+  label: string;
+  from: string | null;
+  to: string | null;
+}
+
+export interface LeadEdit {
+  id: string;
+  createdAt: string;
+  changes: LeadEditChange[];
+  editedBy: { id: string; firstName: string; lastName: string } | null;
+}
+
 export interface HistoricalMatch {
   leadId: string;
   company: string;
@@ -63,15 +77,19 @@ export const leadsApi = api.injectEndpoints({
     }),
     updateLead: build.mutation<ApiEnvelope<Lead>, { id: string; body: Partial<Lead> }>({
       query: ({ id, body }) => ({ url: `/leads/${id}`, method: 'PATCH', body }),
-      invalidatesTags: (_r, _e, { id }) => [{ type: 'Lead', id }, 'Leads'],
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Lead', id }, 'Leads', 'Followup'],
     }),
-    changeStatus: build.mutation<ApiEnvelope<Lead>, { id: string; status: string; reason?: string; sqmSpace?: string }>({
+    leadEditHistory: build.query<ApiEnvelope<LeadEdit[]>, string>({
+      query: (id) => `/leads/${id}/history`,
+      providesTags: (_r, _e, id) => [{ type: 'Lead', id }],
+    }),
+    changeStatus: build.mutation<ApiEnvelope<Lead>, { id: string; status: string; reason?: string; sqmSpace?: string; sqmSpaceType?: string }>({
       query: ({ id, ...body }) => ({ url: `/leads/${id}/status`, method: 'POST', body }),
-      invalidatesTags: (_r, _e, { id }) => [{ type: 'Lead', id }, 'Leads', 'Dashboard'],
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Lead', id }, 'Leads', 'Dashboard', 'Followup'],
     }),
     convertExternal: build.mutation<ApiEnvelope<unknown>, { id: string; type: ExternalLeadType }>({
       query: ({ id, type }) => ({ url: `/leads/${id}/convert-external`, method: 'POST', body: { type } }),
-      invalidatesTags: (_r, _e, { id }) => [{ type: 'Lead', id }, 'Leads', 'Dashboard'],
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Lead', id }, 'Leads', 'Dashboard', 'Followup'],
     }),
     addNote: build.mutation<ApiEnvelope<unknown>, { id: string; body: string }>({
       query: ({ id, body }) => ({ url: `/leads/${id}/notes`, method: 'POST', body: { body } }),
@@ -83,22 +101,22 @@ export const leadsApi = api.injectEndpoints({
     }),
     assignSingle: build.mutation<ApiEnvelope<unknown>, { leadId: string; assignToId: string }>({
       query: (body) => ({ url: '/leads/assign', method: 'POST', body }),
-      invalidatesTags: (_r, _e, { leadId }) => [{ type: 'Lead', id: leadId }, 'Leads', 'Dashboard'],
+      invalidatesTags: (_r, _e, { leadId }) => [{ type: 'Lead', id: leadId }, 'Leads', 'Dashboard', 'Followup'],
     }),
     assignBulk: build.mutation<ApiEnvelope<unknown>, { leadIds: string[]; assignToId: string }>({
       query: (body) => ({ url: '/leads/assign/bulk', method: 'POST', body }),
-      invalidatesTags: ['Leads', 'Dashboard'],
+      invalidatesTags: ['Leads', 'Dashboard', 'Followup'],
     }),
     autoAssign: build.mutation<ApiEnvelope<{ distribution: Record<string, number>; total: number }>, { leadIds: string[]; teamId?: string }>({
       query: (body) => ({ url: '/leads/assign/auto', method: 'POST', body }),
-      invalidatesTags: ['Leads', 'Dashboard'],
+      invalidatesTags: ['Leads', 'Dashboard', 'Followup'],
     }),
     archiveToHistorical: build.mutation<
       ApiEnvelope<{ archived: number; skipped: number; total: number }>,
       { leadIds: string[]; eventYear: number }
     >({
       query: (body) => ({ url: '/leads/archive-historical', method: 'POST', body }),
-      invalidatesTags: ['Leads', 'Dashboard', 'Historical'],
+      invalidatesTags: ['Leads', 'Dashboard', 'Historical', 'Followup'],
     }),
   }),
 });
@@ -110,6 +128,7 @@ export const {
   useBulkImportLeadsMutation,
   useHistoricalMatchesMutation,
   useUpdateLeadMutation,
+  useLeadEditHistoryQuery,
   useChangeStatusMutation,
   useConvertExternalMutation,
   useAddNoteMutation,

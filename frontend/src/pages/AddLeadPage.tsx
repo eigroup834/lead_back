@@ -1,16 +1,17 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Button, Card, CardContent, CardHeader, Grid, MenuItem, Stack, Tab, Tabs, TextField,
-  Typography, Snackbar, Alert, FormControl, FormHelperText, InputLabel, Select, ToggleButton, ToggleButtonGroup,
+  Typography, Snackbar, Alert, FormControl, FormHelperText, InputLabel, Select, Skeleton,
+  ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
-import LeadExcelImport from '@/components/LeadExcelImport';
+const LeadExcelImport = lazy(() => import('@/components/LeadExcelImport'));
 import PageHeader from '@/components/PageHeader';
 import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
-import { LEAD_SOURCES, PRIORITIES, NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES, leadsListPath, prettyLabel } from '@/constants';
+import { PRIORITIES, NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES, leadsListPath, prettyLabel } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
 import { useCreateHistoricalLeadMutation } from '@/features/historical/historicalApi';
@@ -54,10 +55,27 @@ function serverError(error: unknown): string {
   return e.message ?? 'Could not save lead.';
 }
 
+function ImportSkeleton() {
+  return (
+    <Stack spacing={2.5}>
+      {[0, 1].map((i) => (
+        <Card key={i}>
+          <CardContent>
+            <Skeleton animation="wave" width={240} height={24} />
+            <Skeleton animation="wave" width="70%" height={18} sx={{ mt: 1 }} />
+            <Skeleton animation="wave" variant="rounded" width={180} height={36} sx={{ mt: 2 }} />
+          </CardContent>
+        </Card>
+      ))}
+    </Stack>
+  );
+}
+
 export default function AddLeadPage() {
   const navigate = useNavigate();
-  const { level, user } = usePermissions();
+  const { has, level, user } = usePermissions();
   const ownerId = user?.id;
+  const canImport = has('lead.import');
   const [form, setForm] = useState<Form>(empty);
   const [mode, setMode] = useState<'SINGLE' | 'EXCEL'>('SINGLE');
   const [destination, setDestination] = useState<'LEAD' | 'HISTORICAL'>('LEAD');
@@ -103,7 +121,7 @@ export default function AddLeadPage() {
     }
 
     const payload: Record<string, unknown> = {
-      source: form.source, status: form.status, priority: form.priority,
+      source: 'MANUAL', status: form.status, priority: form.priority,
     };
     if (form.leadType) payload.leadType = form.leadType;
     (Object.keys(empty) as (keyof Form)[]).forEach((k) => {
@@ -136,23 +154,27 @@ export default function AddLeadPage() {
     <Box>
       <PageHeader
         title="Add Lead"
-        subtitle="Capture a single lead, or import a batch from a spreadsheet."
+        subtitle={canImport ? 'Capture a single lead, or import a batch from a spreadsheet.' : 'Capture a single lead.'}
         actions={<Button startIcon={<ArrowBackIcon />} onClick={() => navigate(leadsListPath(level))}>Back to leads</Button>}
       />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{serverError(error)}</Alert>}
 
-      <Tabs value={mode} onChange={(_e, v) => setMode(v)} sx={{ mb: 2.5, borderBottom: 1, borderColor: 'divider' }}>
-        <Tab value="SINGLE" label="One lead" />
-        <Tab value="EXCEL" label="Import from Excel" icon={<UploadFileIcon fontSize="small" />} iconPosition="start" />
-      </Tabs>
+      {canImport && (
+        <Tabs value={mode} onChange={(_e, v) => setMode(v)} sx={{ mb: 2.5, borderBottom: 1, borderColor: 'divider' }}>
+          <Tab value="SINGLE" label="One lead" />
+          <Tab value="EXCEL" label="Import from Excel" icon={<UploadFileIcon fontSize="small" />} iconPosition="start" />
+        </Tabs>
+      )}
 
-      {mode === 'EXCEL' ? (
+      {canImport && mode === 'EXCEL' ? (
         <Stack spacing={2.5}>
-          <LeadExcelImport
-            assignToId={ownerId}
-            onImported={(n) => setToast(`${n} lead(s) imported`)}
-          />
+          <Suspense fallback={<ImportSkeleton />}>
+            <LeadExcelImport
+              assignToId={ownerId}
+              onImported={(n) => setToast(`${n} lead(s) imported`)}
+            />
+          </Suspense>
         </Stack>
       ) : (
       <Stack spacing={2.5}>
@@ -178,9 +200,10 @@ export default function AddLeadPage() {
           <CardContent>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={3}>
-                <TextField size="small" select fullWidth label="Source" value={form.source} onChange={set('source')}>
-                  {LEAD_SOURCES.map((s) => <MenuItem key={s} value={s}>{prettyLabel(s)}</MenuItem>)}
-                </TextField>
+                <TextField
+                  size="small" fullWidth label="Source" value="Manual" disabled
+                  helperText="Leads added here are always Manual"
+                />
               </Grid>
               <Grid item xs={12} sm={3}>
                 <TextField size="small" fullWidth label="Lead type" value="Exhibitor" disabled />

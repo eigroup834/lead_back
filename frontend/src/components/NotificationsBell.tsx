@@ -4,6 +4,7 @@ import {
 } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import { useListNotificationsQuery, useMarkReadMutation } from '@/features/adminApi';
+import { formatDateTime } from '@/constants';
 
 export default function NotificationsBell() {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
@@ -35,7 +36,7 @@ export default function NotificationsBell() {
               <ListItemButton key={n.id} onClick={() => !n.readAt && markRead(n.id)} sx={{ bgcolor: n.readAt ? 'transparent' : 'action.hover' }}>
                 <ListItemText
                   primary={n.title}
-                  secondary={<>{n.body}<br /><Typography component="span" variant="caption" color="text.secondary">{new Date(n.createdAt).toLocaleString()}</Typography></>}
+                  secondary={<>{n.body}<br /><Typography component="span" variant="caption" color="text.secondary">{formatDateTime(n.createdAt)}</Typography></>}
                 />
               </ListItemButton>
             ))}

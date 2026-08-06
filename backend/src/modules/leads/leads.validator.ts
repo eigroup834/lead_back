@@ -40,20 +40,24 @@ export const listLeadsQuery = z.object({
 });
 export type ListLeadsQuery = z.infer<typeof listLeadsQuery>;
 
+const editablePattern = (re: RegExp, message: string, max: number) =>
+  z.string().trim().max(max).optional()
+    .refine((v) => !v || re.test(v), { message });
+
 export const updateLeadSchema = z.object({
-  title: z.string().optional(),
-  company: z.string().optional(),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-  designation: z.string().optional(),
-  email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().optional(),
-  mobile: z.string().optional(),
-  altEmail: z.string().optional(),
-  altMobile: z.string().optional(),
-  industry: z.string().optional(),
-  country: z.string().optional(),
-  city: z.string().optional(),
+  title: z.string().trim().max(50).optional(),
+  company: z.string().trim().max(200).optional()
+    .refine((v) => v === undefined || v === '' || v.length >= 2, { message: 'Company must be at least 2 characters' }),
+  firstName: editablePattern(/^[A-Za-z\s.'-]+$/, 'First name may only contain letters, spaces, . and -', 100),
+  lastName: editablePattern(/^[A-Za-z\s.'-]+$/, 'Last name may only contain letters, spaces, . and -', 100),
+  designation: z.string().trim().max(150).optional(),
+  email: editablePattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Enter a valid email', 200),
+  mobile: editablePattern(/^[+]?[\d\s-]{7,20}$/, 'Mobile must be 7-20 digits', 40),
+  altEmail: editablePattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Enter a valid alternate email', 200),
+  altMobile: editablePattern(/^[+]?[\d\s-]{7,20}$/, 'Alternate mobile must be 7-20 digits', 40),
+  industry: z.string().trim().max(150).optional(),
+  country: z.string().trim().max(100).optional(),
+  city: z.string().trim().max(100).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
 });
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
@@ -134,11 +138,24 @@ export const historicalMatchSchema = z.object({
 });
 export type HistoricalMatchInput = z.infer<typeof historicalMatchSchema>;
 
-export const changeStatusSchema = z.object({
-  status: z.enum(LEAD_STATUSES),
-  reason: z.string().max(500).optional(),
-  sqmSpace: z.string().trim().max(100).optional(),
-});
+export const SPACE_TYPES = ['RAW', 'SHELL'] as const;
+
+export const changeStatusSchema = z
+  .object({
+    status: z.enum(LEAD_STATUSES),
+    reason: z.string().max(500).optional(),
+    sqmSpace: z.string().trim().max(100).optional(),
+    sqmSpaceType: z.enum(SPACE_TYPES).optional(),
+  })
+  // Converting records a booking: both the kind of space and how much of it.
+  .refine((d) => d.status !== 'CONVERTED' || !!d.sqmSpaceType, {
+    message: 'Choose raw space or shell space',
+    path: ['sqmSpaceType'],
+  })
+  .refine((d) => d.status !== 'CONVERTED' || /^\s*\d+(\.\d+)?/.test(d.sqmSpace ?? ''), {
+    message: 'Enter the booked area in sqm as a number',
+    path: ['sqmSpace'],
+  });
 
 export const convertExternalSchema = z.object({
   type: z.enum(['VISITOR', 'DELEGATE', 'SPEAKER']),

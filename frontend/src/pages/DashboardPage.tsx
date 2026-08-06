@@ -16,7 +16,7 @@ import { ChartSkeleton } from '@/components/Skeletons';
 import {
   useSummaryQuery, useFunnelQuery, useDailyTrendQuery,
 } from '@/features/dashboard/dashboardApi';
-import { CHART_COLORS } from '@/constants';
+import { CHART_COLORS, statusLabel } from '@/constants';
 
 export default function DashboardPage() {
   const { data: summary, isLoading } = useSummaryQuery();
@@ -60,7 +60,10 @@ export default function DashboardPage() {
             {funnelLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer>
               <PieChart>
-                <Pie data={funnel?.data ?? []} dataKey="count" nameKey="status" innerRadius={55} outerRadius={95} paddingAngle={2}>
+                <Pie
+                  data={(funnel?.data ?? []).map((f) => ({ ...f, status: statusLabel(f.status) }))}
+                  dataKey="count" nameKey="status" innerRadius={55} outerRadius={95} paddingAngle={2}
+                >
                   {(funnel?.data ?? []).map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                 </Pie>
                 <Legend />

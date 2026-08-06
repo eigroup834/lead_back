@@ -131,10 +131,39 @@ export function prettyLabel(v: string): string {
 export const sourceChannelLabel = (v?: string | null) =>
   LEAD_SOURCE_CHANNELS.find((c) => c.value === v)?.label ?? (v ? prettyLabel(v) : '');
 
+// Dates read the same everywhere: 05 Aug 26. A named month removes the
+// day/month ambiguity that plain numeric dates carry across locales.
+const DATE_FMT: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: '2-digit' };
+const TIME_FMT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false };
+
+const toDate = (v: string | number | Date | null | undefined) => {
+  if (v === null || v === undefined || v === '') return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+export const formatDate = (v: string | number | Date | null | undefined, fallback = '—') => {
+  const d = toDate(v);
+  return d ? d.toLocaleDateString('en-GB', DATE_FMT) : fallback;
+};
+
+export const formatDateTime = (v: string | number | Date | null | undefined, fallback = '—') => {
+  const d = toDate(v);
+  if (!d) return fallback;
+  return `${d.toLocaleDateString('en-GB', DATE_FMT)}, ${d.toLocaleTimeString('en-GB', TIME_FMT)}`;
+};
+
 export const sentenceCase = (v: string) => {
   const s = v.replace(/_/g, ' ').toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
+
+const LEAD_STATUS_LABELS: Partial<Record<LeadStatus, string>> = {
+  NOT_REACHABLE: 'No Answer/Not Reachable',
+};
+
+export const statusLabel = (v?: string | null) =>
+  (v ? LEAD_STATUS_LABELS[v as LeadStatus] ?? sentenceCase(v) : '');
 
 export interface NavItem {
   label: string;

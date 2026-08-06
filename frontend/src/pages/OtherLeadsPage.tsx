@@ -24,6 +24,7 @@ import {
 import { useListUsersQuery } from '@/features/adminApi';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import RowActions from '@/components/RowActions';
 import { SkeletonRows } from '@/components/Skeletons';
 
 type ExternalSortKey =
@@ -235,20 +236,12 @@ export default function OtherLeadsPage() {
                     </TableCell>
                     {canEdit && (
                       <TableCell align="right">
-                        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                          <Tooltip title="Reclassify this lead">
-                            <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => openClassify(r)}>
-                              Classify
-                            </Button>
-                          </Tooltip>
-                          <Tooltip title="Queue for sync to its panel">
-                            <span>
-                              <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1 }} disabled={syncing} onClick={() => doSync([r.id])}>
-                                <SyncIcon fontSize="small" />
-                              </Button>
-                            </span>
-                          </Tooltip>
-                        </Stack>
+                        <RowActions
+                          actions={[
+                            { label: 'Classify', onClick: () => openClassify(r) },
+                            { label: 'Sync', onClick: () => doSync([r.id]), disabled: syncing },
+                          ]}
+                        />
                       </TableCell>
                     )}
                   </TableRow>

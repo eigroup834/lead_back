@@ -12,9 +12,10 @@ import BlockIcon from '@mui/icons-material/Block';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useListUsersQuery, useCreateUserMutation, useUpdateUserMutation, useListRolesQuery, useLazyGetCredentialQuery, type UserRow } from '@/features/adminApi';
 import { usePermissions } from '@/hooks/usePermissions';
-import { sentenceCase } from '@/constants';
+import { sentenceCase, formatDateTime } from '@/constants';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
+import RowActions from '@/components/RowActions';
 import { SkeletonRows } from '@/components/Skeletons';
 
 type UserSortKey = 'firstName' | 'email' | 'phone' | 'status' | 'lastLoginAt' | 'createdAt';
@@ -51,7 +52,7 @@ export default function UsersPage() {
 
   const users = data?.data ?? [];
   const canEdit = has('user.update');
-  const colCount = 6 + (canEdit ? 1 : 0) + (isSuperAdmin ? 1 : 0);
+  const colCount = 6 + (canEdit || isSuperAdmin ? 1 : 0);
   const assignableRoles = (roles?.data ?? []).filter((r) => r.level >= level);
 
   const openEdit = (u: UserRow) => {
@@ -116,8 +117,7 @@ export default function UsersPage() {
               <TableCell sx={{ fontWeight: 700 }}>Roles</TableCell>
               <SortableCell field="status" sort={sort} onSort={toggleSort}>Status</SortableCell>
               <SortableCell field="lastLoginAt" sort={sort} onSort={toggleSort}>Last Login</SortableCell>
-              {isSuperAdmin && <TableCell align="center" sx={{ fontWeight: 700 }}>Password</TableCell>}
-              {canEdit && <TableCell align="center" sx={{ fontWeight: 700 }}>Actions</TableCell>}
+              {(canEdit || isSuperAdmin) && <TableCell align="right" sx={{ fontWeight: 700, pr: 2 }}>Actions</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -128,28 +128,25 @@ export default function UsersPage() {
                 <TableCell>{u.phone || '—'}</TableCell>
                 <TableCell>{u.roles.map((r) => <Chip key={r.role.id} size="small" label={r.role.label} sx={{ mr: 0.5 }} />)}</TableCell>
                 <TableCell><Chip size="small" label={sentenceCase(u.status)} color={u.status === 'ACTIVE' ? 'success' : 'default'} /></TableCell>
-                <TableCell>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</TableCell>
-                {isSuperAdmin && (
-                  <TableCell align="center">
-                    <Tooltip title="Reveal password">
-                      <IconButton size="small" onClick={() => revealPassword(u.id, `${u.firstName} ${u.lastName}`)}><VisibilityIcon fontSize="small" /></IconButton>
-                    </Tooltip>
-                  </TableCell>
-                )}
-                {canEdit && (
-                  <TableCell align="center">
-                    <Tooltip title="Edit user">
-                      <IconButton size="small" onClick={() => openEdit(u)}><EditIcon fontSize="small" /></IconButton>
-                    </Tooltip>
-                    {isSuperAdmin && u.id !== user?.id && (
-                      <Tooltip title={u.status === 'ACTIVE' ? 'Deactivate user' : 'Reactivate user'}>
-                        <IconButton size="small" onClick={() => setStatusTarget(u)}>
-                          {u.status === 'ACTIVE'
-                            ? <BlockIcon fontSize="small" color="error" />
-                            : <CheckCircleIcon fontSize="small" color="success" />}
-                        </IconButton>
-                      </Tooltip>
-                    )}
+                <TableCell>{formatDateTime(u.lastLoginAt)}</TableCell>
+                {(canEdit || isSuperAdmin) && (
+                  <TableCell align="right" sx={{ pr: 2 }}>
+                    <RowActions
+                      limit={3}
+                      actions={[
+                        { label: 'Edit', onClick: () => openEdit(u), hidden: !canEdit },
+                        {
+                          label: 'Password',
+                          onClick: () => revealPassword(u.id, `${u.firstName} ${u.lastName}`),
+                          hidden: !isSuperAdmin,
+                        },
+                        {
+                          label: u.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate',
+                          onClick: () => setStatusTarget(u),
+                          hidden: !canEdit || !isSuperAdmin || u.id === user?.id,
+                        },
+                      ]}
+                    />
                   </TableCell>
                 )}
               </TableRow>

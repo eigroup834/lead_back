@@ -6,6 +6,7 @@ export const PERMISSIONS = [
   { key: 'lead.assign', module: 'lead', description: 'Assign / reassign leads' },
   { key: 'lead.delete', module: 'lead', description: 'Soft-delete leads' },
   { key: 'lead.export', module: 'lead', description: 'Export leads' },
+  { key: 'lead.import', module: 'lead', description: 'Bulk-import leads from a spreadsheet' },
   { key: 'lead.sync', module: 'lead', description: 'Trigger / view source sync' },
   { key: 'lead.note', module: 'lead', description: 'Add notes' },
   { key: 'lead.followup', module: 'lead', description: 'Schedule follow-ups' },
@@ -34,14 +35,14 @@ export const ROLES = [
 const ALL = PERMISSIONS.map((p) => p.key);
 
 const FIELD_SALES: PermissionKey[] = [
-  'lead.view', 'lead.edit', 'lead.note', 'lead.followup', 'dashboard.view',
-  'historical.view', 'historical.manage',
+  'lead.view', 'lead.create', 'lead.edit', 'lead.note', 'lead.followup', 'dashboard.view',
+  'analytics.view', 'historical.view', 'historical.manage',
 ];
 
 export const ROLE_MATRIX: Record<string, PermissionKey[] | '*'> = {
   SUPER_ADMIN: '*',
   HEAD: [
-    'lead.view', 'lead.create', 'lead.edit', 'lead.assign', 'lead.export', 'lead.note', 'lead.followup',
+    'lead.view', 'lead.create', 'lead.edit', 'lead.assign', 'lead.export', 'lead.import', 'lead.note', 'lead.followup',
     'historical.view', 'historical.manage',
     'user.view', 'user.create', 'user.update',
     'dashboard.view', 'analytics.view', 'report.export',

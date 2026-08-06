@@ -8,7 +8,7 @@ import { useAppDispatch, useAppSelector } from '@/store';
 import { toggleMode } from '@/features/ui/uiSlice';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSyncLogsQuery, useRunSyncMutation } from '@/features/adminApi';
-import { sentenceCase } from '@/constants';
+import { sentenceCase, formatDateTime } from '@/constants';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
 
@@ -82,7 +82,7 @@ export default function SettingsPage() {
                   <TableBody>
                     {syncRows.map((l) => (
                       <TableRow key={l.id}>
-                        <TableCell>{new Date(l.startedAt).toLocaleString()}</TableCell>
+                        <TableCell>{formatDateTime(l.startedAt)}</TableCell>
                         <TableCell><Chip size="small" label={sentenceCase(l.status)} color={l.status === 'SUCCESS' ? 'success' : l.status === 'FAILED' ? 'error' : 'info'} /></TableCell>
                         <TableCell align="right">{l.fetchedCount}</TableCell>
                         <TableCell align="right">{l.insertedCount}</TableCell>
