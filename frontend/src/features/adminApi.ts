@@ -35,6 +35,11 @@ export interface FollowupRow {
   assignee?: { id: string; firstName: string; lastName: string } | null;
 }
 
+export interface SalesTarget {
+  year: number;
+  targetSqm: number;
+}
+
 export interface UserRow {
   id: string;
   email: string;
@@ -44,6 +49,7 @@ export interface UserRow {
   status: string;
   lastLoginAt: string | null;
   roles: Array<{ role: { id: string; name: string; label: string; level: number } }>;
+  salesTargets?: SalesTarget[];
 }
 
 export interface RoleRow {
@@ -88,13 +94,14 @@ export const adminApi = api.injectEndpoints({
     }),
     createUser: build.mutation<ApiEnvelope<UserRow>, {
       email: string; phone?: string; password: string; firstName: string; lastName: string; roleIds: string[];
+      targets?: SalesTarget[];
     }>({
       query: (body) => ({ url: '/users', method: 'POST', body }),
       invalidatesTags: ['User'],
     }),
     updateUser: build.mutation<ApiEnvelope<UserRow>, {
       id: string; email?: string; phone?: string | null; firstName?: string; lastName?: string;
-      roleIds?: string[]; status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+      roleIds?: string[]; status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'; targets?: SalesTarget[];
     }>({
       query: ({ id, ...body }) => ({ url: `/users/${id}`, method: 'PATCH', body }),
       invalidatesTags: ['User'],

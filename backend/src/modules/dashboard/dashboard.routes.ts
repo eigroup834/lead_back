@@ -45,6 +45,11 @@ router.get('/by-country', dashView, asyncHandler(async (req, res) => ok(res, awa
 router.get('/trends/daily', dashView, asyncHandler(async (req, res) => ok(res, await dashboardService.dailyTrend(parseFilter(req), Number(req.query.days) || 30))));
 router.get('/trends/monthly', dashView, asyncHandler(async (req, res) => ok(res, await dashboardService.monthlyTrend(parseFilter(req), Number(req.query.months) || 12))));
 router.get('/conversion-by-source', analyticsView, asyncHandler(async (req, res) => ok(res, await dashboardService.conversionBySource(parseFilter(req)))));
+router.get('/target-years', analyticsView, asyncHandler(async (_req, res) => ok(res, await dashboardService.targetYears())));
+router.get('/target-achievement', analyticsView, asyncHandler(async (req, res) => {
+  const year = Number(req.query.year) || undefined;
+  return ok(res, await dashboardService.targetAchievement(parseFilter(req), year));
+}));
 router.get('/team-performance', analyticsView, asyncHandler(async (req, res) => ok(res, await dashboardService.teamPerformance(parseFilter(req)))));
 router.get('/leaderboard', analyticsView, asyncHandler(async (req, res) => ok(res, (await dashboardService.teamPerformance(parseFilter(req))).slice(0, 10))));
 

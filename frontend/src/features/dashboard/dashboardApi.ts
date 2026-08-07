@@ -34,6 +34,16 @@ export interface ConversionBySource {
   conversionRate: number;
 }
 
+export interface TargetAchievement {
+  userId: string;
+  name: string;
+  target: number;
+  achieved: number;
+  deals: number;
+  achievedPct: number;
+  remaining: number;
+}
+
 export const dashboardApi = api.injectEndpoints({
   endpoints: (build) => ({
     dashFilters: build.query<ApiEnvelope<FiltersRef>, void>({ query: () => '/dashboard/filters', providesTags: ['Dashboard'] }),
@@ -45,6 +55,8 @@ export const dashboardApi = api.injectEndpoints({
     dailyTrend: build.query<ApiEnvelope<DailyPoint[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/trends/daily', params: clean(f) }), providesTags: ['Dashboard'] }),
     monthlyTrend: build.query<ApiEnvelope<MonthlyPoint[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/trends/monthly', params: clean(f) }), providesTags: ['Dashboard'] }),
     conversionBySource: build.query<ApiEnvelope<ConversionBySource[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/conversion-by-source', params: clean(f) }), providesTags: ['Dashboard'] }),
+    targetYears: build.query<ApiEnvelope<number[]>, void>({ query: () => ({ url: '/dashboard/target-years' }), providesTags: ['Dashboard'] }),
+    targetAchievement: build.query<ApiEnvelope<TargetAchievement[]>, DashFilter & { year?: number }>({ query: (f) => ({ url: '/dashboard/target-achievement', params: clean(f) }), providesTags: ['Dashboard'] }),
     teamPerformance: build.query<ApiEnvelope<TeamPerf[]>, DashFilter | void>({ query: (f) => ({ url: '/dashboard/team-performance', params: clean(f) }), providesTags: ['Dashboard'] }),
   }),
 });
@@ -59,5 +71,7 @@ export const {
   useDailyTrendQuery,
   useMonthlyTrendQuery,
   useConversionBySourceQuery,
+  useTargetYearsQuery,
+  useTargetAchievementQuery,
   useTeamPerformanceQuery,
 } = dashboardApi;

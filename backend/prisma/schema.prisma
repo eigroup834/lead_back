@@ -239,6 +239,7 @@ model User {
   assignedHistoricalLeads HistoricalLead[] @relation("HistoricalAssignee")
   historicalLeadEdits     HistoricalLeadEdit[]
   leadEdits               LeadEdit[]
+  salesTargets            UserSalesTarget[]
 
   @@index([departmentId])
   @@index([teamId])
@@ -301,6 +302,7 @@ model Lead {
   rawSpace     String? @map("raw_space")
   sqmSpace     String? @map("sqm_space") // captured when a lead is marked Converted
   sqmSpaceType String? @map("sqm_space_type") // RAW or SHELL — which kind of space was booked
+  convertedAt  DateTime? @map("converted_at") // when the lead was marked Converted
   address      String?
   city         String?
   state        String?
@@ -619,6 +621,21 @@ model MailLog {
   @@index([entityId])
   @@index([status])
   @@map("mail_log")
+}
+
+model UserSalesTarget {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  year      Int
+  targetSqm Float    @map("target_sqm")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year])
+  @@index([year])
+  @@map("user_sales_targets")
 }
 
 model LeadEdit {

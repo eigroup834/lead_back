@@ -2,6 +2,7 @@ import { startOfDay, endOfDay, subDays, startOfMonth, subMonths } from 'date-fns
 import { Prisma } from '@prisma/client';
 import { prisma } from '@config/prisma';
 import { cache } from '@services/cache.service';
+import { seasonBounds, currentSeason, seasonOf as seasonOfDate } from '@utils/season';
 
 const TTL = 60;
 
@@ -222,6 +223,77 @@ export const dashboardService = {
         }))
         .sort((a, b) => b.total - a.total);
     });
+  },
+
+  targetAchievement(f: DashFilter, year = currentSeason()) {
+    return remember(`targets:${year}`, f, async () => {
+      const { from, to } = seasonBounds(year);
+
+      const users = await prisma.user.findMany({
+        where: {
+          deletedAt: null,
+          status: 'ACTIVE',
+          ...(f.userId ? { id: f.userId } : f.teamId ? { teamId: f.teamId } : {}),
+        },
+        select: {
+          id: true, firstName: true, lastName: true,
+          salesTargets: { where: { year }, select: { targetSqm: true } },
+        },
+      });
+
+      const booked = await prisma.lead.findMany({
+        where: {
+          deletedAt: null,
+          status: 'CONVERTED',
+          assignedUserId: { in: users.map((u) => u.id) },
+          convertedAt: { gte: from, lt: to },
+        },
+        select: { assignedUserId: true, sqmSpace: true },
+      });
+
+      const achievedM = new Map<string, number>();
+      const dealsM = new Map<string, number>();
+      for (const b of booked) {
+        if (!b.assignedUserId) continue;
+        dealsM.set(b.assignedUserId, (dealsM.get(b.assignedUserId) ?? 0) + 1);
+        const n = parseSpace(b.sqmSpace);
+        if (n !== null) achievedM.set(b.assignedUserId, (achievedM.get(b.assignedUserId) ?? 0) + n);
+      }
+
+      return users
+        .map((u) => {
+          const target = u.salesTargets[0]?.targetSqm ?? 0;
+          const achieved = round2(achievedM.get(u.id) ?? 0);
+          return {
+            userId: u.id,
+            name: `${u.firstName} ${u.lastName}`,
+            target: round2(target),
+            achieved,
+            deals: dealsM.get(u.id) ?? 0,
+            achievedPct: target > 0 ? round2((achieved / target) * 100) : 0,
+            remaining: round2(Math.max(0, target - achieved)),
+          };
+        })
+        // People with a target come first; within that, furthest ahead first.
+        .sort((a, b) => (b.target > 0 ? 1 : 0) - (a.target > 0 ? 1 : 0) || b.achievedPct - a.achievedPct || b.achieved - a.achieved);
+    });
+  },
+
+  /** Seasons that have either a target set or a booking recorded. */
+  async targetYears() {
+    const [targets, first] = await Promise.all([
+      prisma.userSalesTarget.groupBy({ by: ['year'], _count: { _all: true } }),
+      prisma.lead.findFirst({
+        where: { status: 'CONVERTED', convertedAt: { not: null } },
+        select: { convertedAt: true }, orderBy: { convertedAt: 'asc' },
+      }),
+    ]);
+    const years = new Set<number>(targets.map((t) => t.year));
+    years.add(currentSeason());
+    if (first?.convertedAt) {
+      for (let y = seasonOfDate(first.convertedAt); y <= currentSeason(); y += 1) years.add(y);
+    }
+    return [...years].sort((a, b) => b - a);
   },
 
   teamPerformance(f: DashFilter) {

@@ -153,6 +153,18 @@ export const formatDateTime = (v: string | number | Date | null | undefined, fal
   return `${d.toLocaleDateString('en-GB', DATE_FMT)}, ${d.toLocaleTimeString('en-GB', TIME_FMT)}`;
 };
 
+// The show runs each March, so a selling season runs April to March and is named for
+// the year its event falls in: season 2027 = Apr 2026 to Mar 2027. Mirrors the
+// backend's src/utils/season.ts — keep the two in step.
+const SEASON_START_MONTH = 3; // April, zero-based
+
+export const seasonOf = (d: Date) =>
+  (d.getMonth() >= SEASON_START_MONTH ? d.getFullYear() + 1 : d.getFullYear());
+
+export const currentSeason = () => seasonOf(new Date());
+
+export const seasonLabel = (year: number) => `Apr ${year - 1} – Mar ${year}`;
+
 export const sentenceCase = (v: string) => {
   const s = v.replace(/_/g, ' ').toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);

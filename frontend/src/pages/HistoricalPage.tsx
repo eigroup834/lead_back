@@ -23,7 +23,7 @@ import {
 import { useListUsersQuery } from '@/features/adminApi';
 import { SortableCell, useSort } from '@/components/SortableCell';
 import PageHeader from '@/components/PageHeader';
-import RowActions from '@/components/RowActions';
+import RowActions, { STICKY_ACTION_COL } from '@/components/RowActions';
 import { SkeletonRows } from '@/components/Skeletons';
 import { NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES, formatDateTime } from '@/constants';
 
@@ -103,7 +103,8 @@ export default function HistoricalPage() {
   const total = data?.meta?.total ?? 0;
   const anyFilter = Boolean(debounced || assignee || industry);
   const selectedIds = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected]);
-  const canSelect = canRestore;
+  const canSelect = false;
+  const open_ = { cursor: 'pointer' };
 
   const doRestore = async () => {
     if (!restoreConfirm) return;
@@ -282,7 +283,7 @@ export default function HistoricalPage() {
                   <SortableCell field="industry" sort={sort} onSort={toggleSort}>Industry</SortableCell>
                   <SortableCell field="remark" sort={sort} onSort={toggleSort}>Remark</SortableCell>
                   <SortableCell field="assignedUser" sort={sort} onSort={toggleSort}>Assigned to</SortableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>
+                  <TableCell align="right" sx={{ ...STICKY_ACTION_COL, fontWeight: 700, pr: 2, zIndex: 3 }}>Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -295,20 +296,20 @@ export default function HistoricalPage() {
                           <Checkbox checked={!!selected[r.id]} onChange={(e) => setSelected((s) => ({ ...s, [r.id]: e.target.checked }))} />
                         </TableCell>
                       )}
-                      <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{r.company || '—'}</Typography></TableCell>
-                      <TableCell><Typography variant="caption">{name || '—'}</Typography></TableCell>
-                      <TableCell><Typography variant="caption">{r.designation || '—'}</Typography></TableCell>
-                      <TableCell><Typography variant="caption" noWrap sx={{ maxWidth: 180, display: 'block' }} title={r.email ?? ''}>{r.email || '—'}</Typography></TableCell>
-                      <TableCell><Typography variant="caption">{r.mobile || '—'}</Typography></TableCell>
-                      <TableCell><Typography variant="caption">{r.city || '—'}</Typography></TableCell>
-                      <TableCell><Typography variant="caption">{r.country || '—'}</Typography></TableCell>
-                      <TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}><Typography variant="body2" sx={{ fontWeight: 600 }}>{r.company || '—'}</Typography></TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}><Typography variant="caption">{name || '—'}</Typography></TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}><Typography variant="caption">{r.designation || '—'}</Typography></TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}><Typography variant="caption" noWrap sx={{ maxWidth: 180, display: 'block' }} title={r.email ?? ''}>{r.email || '—'}</Typography></TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}><Typography variant="caption">{r.mobile || '—'}</Typography></TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}><Typography variant="caption">{r.city || '—'}</Typography></TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}><Typography variant="caption">{r.country || '—'}</Typography></TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}>
                         <Typography variant="caption" noWrap sx={{ maxWidth: 180, display: 'block' }} title={r.industry ?? ''}>{r.industry || '—'}</Typography>
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}>
                         <Typography variant="caption" noWrap sx={{ maxWidth: 200, display: 'block' }} title={r.remark ?? ''}>{r.remark || '—'}</Typography>
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={open_} onClick={() => setDetail(r)}>
                         <Stack direction="row" spacing={0.5} alignItems="center">
                           {r.assignedUser
                             ? <Chip size="small" color="primary" label={`${r.assignedUser.firstName} ${r.assignedUser.lastName}`} />
@@ -317,13 +318,13 @@ export default function HistoricalPage() {
                               : <Typography variant="caption" color="text.secondary">—</Typography>}
                         </Stack>
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={{ ...STICKY_ACTION_COL, pr: 2 }}>
                         <RowActions
+                          limit={3}
                           actions={[
-                            { label: 'View', onClick: () => setDetail(r) },
                             { label: 'Restore', onClick: () => doUndelete(r), disabled: undeleting, hidden: !showInactive },
                             {
-                              label: 'To Leads',
+                              label: 'Convert to Lead',
                               onClick: () => setRestoreConfirm({ ids: [r.id], label: `“${r.company || name || 'this lead'}”` }),
                               hidden: showInactive || !canRestore,
                             },

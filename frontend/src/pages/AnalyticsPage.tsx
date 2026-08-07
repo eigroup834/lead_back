@@ -18,10 +18,14 @@ import {
 } from 'recharts';
 import ChartCard from '@/components/ChartCard';
 import StatCard from '@/components/StatCard';
-import { CHART_COLORS, MEDAL_COLORS, statusLabel, sourceChannelLabel, prettyLabel } from '@/constants';
+import {
+  CHART_COLORS, MEDAL_COLORS, statusLabel, sourceChannelLabel, prettyLabel,
+  currentSeason, seasonLabel,
+} from '@/constants';
 import {
   useDashFiltersQuery, useSummaryQuery, useFunnelQuery, useMonthlyTrendQuery,
-  useTeamPerformanceQuery, useConversionBySourceQuery, type DashFilter,
+  useTeamPerformanceQuery, useConversionBySourceQuery, useTargetYearsQuery,
+  useTargetAchievementQuery, type DashFilter,
 } from '@/features/dashboard/dashboardApi';
 import type { TeamPerf } from '@/features/types';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
@@ -74,6 +78,9 @@ export default function AnalyticsPage() {
   const { data: monthly } = useMonthlyTrendQuery({ ...filter, months: 12 });
   const { data: team, isLoading: teamLoading } = useTeamPerformanceQuery(filter);
   const { data: convBySource, isLoading: sourceLoading } = useConversionBySourceQuery(filter);
+  const [season, setSeason] = useState(currentSeason());
+  const { data: seasonsData } = useTargetYearsQuery();
+  const { data: targets, isLoading: targetsLoading } = useTargetAchievementQuery({ ...filter, year: season });
 
   const s = summary?.data;
   const teamData = team?.data ?? [];
@@ -86,6 +93,14 @@ export default function AnalyticsPage() {
     Converted: r.converted,
     rate: r.conversionRate,
   }));
+  const seasons = seasonsData?.data?.length ? seasonsData.data : [currentSeason()];
+  const targetRows = targets?.data ?? [];
+  const withTargets = targetRows.filter((r) => r.target > 0);
+  const seasonTotal = withTargets.reduce(
+    (acc, r) => ({ target: acc.target + r.target, achieved: acc.achieved + r.achieved }),
+    { target: 0, achieved: 0 },
+  );
+  const seasonPct = seasonTotal.target > 0 ? Number(((seasonTotal.achieved / seasonTotal.target) * 100).toFixed(1)) : 0;
   const teamChart = teamData.slice(0, 10).map((t) => ({ name: t.name.split(' ')[0], Assigned: t.assigned, Converted: t.converted, Calls: t.calls }));
 
   const clear = () => { setDateFrom(''); setDateTo(''); setUserId(''); };
@@ -192,6 +207,91 @@ export default function AnalyticsPage() {
         </Grid>
         </>
         )}
+
+        <Grid item xs={12}>
+          <Card>
+            <CardHeader
+              title={selfOnly ? 'My Target' : 'Targets vs Achieved'}
+              subheader={`Season ${season} · ${seasonLabel(season)} · space booked in sqm`}
+              titleTypographyProps={{ variant: 'h6' }}
+              subheaderTypographyProps={{ variant: 'caption' }}
+              action={(
+                <TextField
+                  select size="small" label="Season" value={season}
+                  onChange={(e) => setSeason(Number(e.target.value))}
+                  sx={{ minWidth: 190 }}
+                >
+                  {seasons.map((y) => <MenuItem key={y} value={y}>{y} · {seasonLabel(y)}</MenuItem>)}
+                </TextField>
+              )}
+            />
+            <Divider />
+            <CardContent>
+              {withTargets.length > 0 && !selfOnly && (
+                <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                  <Typography variant="h5">{sqm(seasonTotal.achieved)}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    of {sqm(seasonTotal.target)} sqm · {seasonPct}% of the combined target
+                  </Typography>
+                  <Box sx={{ flex: 1 }} />
+                  <LinearProgress
+                    variant="determinate" value={Math.min(100, seasonPct)}
+                    color={seasonPct >= 100 ? 'success' : 'primary'}
+                    sx={{ flex: 1, height: 8, borderRadius: 4 }}
+                  />
+                </Stack>
+              )}
+
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Member</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Target (sqm)</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Booked (sqm)</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Deals</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Remaining</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, width: 200 }}>Achieved</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {targetsLoading && targetRows.length === 0 && <SkeletonRows rows={5} columns={6} />}
+                  {targetRows.map((r) => (
+                    <TableRow key={r.userId} hover>
+                      <TableCell>{r.name}</TableCell>
+                      <TableCell align="right">
+                        {r.target > 0 ? sqm(r.target) : <Typography variant="caption" color="text.disabled">Not set</Typography>}
+                      </TableCell>
+                      <TableCell align="right">{sqm(r.achieved)}</TableCell>
+                      <TableCell align="right">{r.deals}</TableCell>
+                      <TableCell align="right">{r.target > 0 ? sqm(r.remaining) : '—'}</TableCell>
+                      <TableCell align="right">
+                        {r.target > 0 ? (
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <LinearProgress
+                              variant="determinate" value={Math.min(100, r.achievedPct)}
+                              color={r.achievedPct >= 100 ? 'success' : 'primary'}
+                              sx={{ flex: 1, height: 6, borderRadius: 3 }}
+                            />
+                            <Typography variant="caption" sx={{ minWidth: 46 }}>{r.achievedPct}%</Typography>
+                          </Stack>
+                        ) : (
+                          <Typography variant="caption" color="text.disabled">No target set</Typography>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!targetsLoading && targetRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                        No targets or bookings for this season
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </Grid>
 
         <Grid item xs={12}>
           <ChartCard title="Conversion by Source" height={320}>

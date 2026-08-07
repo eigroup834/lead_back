@@ -13,6 +13,12 @@ import { cache, cacheKeys } from '@services/cache.service';
 import { encryptSecret, decryptSecret } from '@utils/crypto';
 import type { AuthUser } from '@/types';
 
+const targetSchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100),
+  targetSqm: z.coerce.number().min(0).max(1_000_000),
+});
+const targetsSchema = z.object({ targets: z.array(targetSchema).max(20) });
+
 const createSchema = z.object({
   email: z.string().email().toLowerCase(),
   password: z.string().min(8).max(128),
@@ -23,6 +29,7 @@ const createSchema = z.object({
   teamId: z.string().uuid().optional(),
   managerId: z.string().uuid().optional(),
   roleIds: z.array(z.string().uuid()).min(1),
+  targets: z.array(targetSchema).max(20).optional(),
 });
 const updateSchema = z.object({
   firstName: z.string().optional(),
@@ -33,6 +40,7 @@ const updateSchema = z.object({
   teamId: z.string().uuid().nullable().optional(),
   managerId: z.string().uuid().nullable().optional(),
   roleIds: z.array(z.string().uuid()).optional(),
+  targets: z.array(targetSchema).max(20).optional(),
 });
 const USER_SORTABLE = ['firstName', 'email', 'phone', 'status', 'lastLoginAt', 'createdAt'] as const;
 const listQuery = z.object({
@@ -49,7 +57,14 @@ const publicSelect = {
   id: true, email: true, firstName: true, lastName: true, phone: true, status: true,
   departmentId: true, teamId: true, managerId: true, lastLoginAt: true, createdAt: true,
   roles: { select: { role: { select: { id: true, name: true, label: true, level: true } } } },
+  salesTargets: { select: { year: true, targetSqm: true }, orderBy: { year: 'desc' } },
 } satisfies Prisma.UserSelect;
+
+function dedupeTargets(targets: z.infer<typeof targetSchema>[]) {
+  const byYear = new Map<number, number>();
+  for (const t of targets) byYear.set(t.year, t.targetSqm);
+  return [...byYear.entries()].map(([year, targetSqm]) => ({ year, targetSqm }));
+}
 
 export const usersService = {
   async list(q: z.infer<typeof listQuery>) {
@@ -80,8 +95,24 @@ export const usersService = {
         firstName: input.firstName, lastName: input.lastName,
         phone: input.phone, departmentId: input.departmentId, teamId: input.teamId, managerId: input.managerId,
         roles: { create: input.roleIds.map((roleId) => ({ roleId })) },
+        salesTargets: input.targets?.length
+          ? { create: dedupeTargets(input.targets) }
+          : undefined,
       },
       select: publicSelect,
+    });
+  },
+
+  async setTargets(userId: string, targets: z.infer<typeof targetSchema>[]) {
+    const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { id: true } });
+    if (!user) throw AppError.notFound('User not found');
+    const rows = dedupeTargets(targets);
+    await prisma.$transaction([
+      prisma.userSalesTarget.deleteMany({ where: { userId } }),
+      ...(rows.length ? [prisma.userSalesTarget.createMany({ data: rows.map((r) => ({ ...r, userId })) })] : []),
+    ]);
+    return prisma.userSalesTarget.findMany({
+      where: { userId }, select: { year: true, targetSqm: true }, orderBy: { year: 'desc' },
     });
   },
 
@@ -111,14 +142,19 @@ export const usersService = {
       if (tooHigh) throw AppError.forbidden(`You cannot assign the ${tooHigh.label} role`);
     }
 
-    const { roleIds, ...rest } = input;
+    const { roleIds, targets, ...rest } = input;
     const updated = await prisma.$transaction(async (tx) => {
       const u = await tx.user.update({ where: { id }, data: rest, select: publicSelect });
       if (roleIds) {
         await tx.userRole.deleteMany({ where: { userId: id } });
         await tx.userRole.createMany({ data: roleIds.map((roleId) => ({ userId: id, roleId })) });
       }
-      return u;
+      if (targets) {
+        await tx.userSalesTarget.deleteMany({ where: { userId: id } });
+        const rows = dedupeTargets(targets);
+        if (rows.length) await tx.userSalesTarget.createMany({ data: rows.map((r) => ({ ...r, userId: id })) });
+      }
+      return tx.user.findUniqueOrThrow({ where: { id }, select: publicSelect });
     });
     await cache.del(cacheKeys.permissions(id));
     return updated;
@@ -158,6 +194,10 @@ router.get('/:id/credential', requireMaxLevel(1), validate({ params: idParam }),
 router.patch('/:id', requirePermission('user.update'), validate({ params: idParam, body: updateSchema }), asyncHandler(async (req, res) => {
   const user = await usersService.update(req.user!, req.params.id, req.body);
   return ok(res, user);
+}));
+
+router.put('/:id/targets', requirePermission('user.update'), validate({ params: idParam, body: targetsSchema }), asyncHandler(async (req, res) => {
+  return ok(res, await usersService.setTargets(req.params.id, req.body.targets));
 }));
 
 router.delete('/:id', requirePermission('user.delete'), validate({ params: idParam }), asyncHandler(async (req, res) => {

@@ -315,6 +315,7 @@ export const leadsService = {
           status: toStatus,
           ...(sqmSpace !== undefined ? { sqmSpace } : {}),
           ...(sqmSpaceType !== undefined ? { sqmSpaceType } : {}),
+          ...(toStatus === 'CONVERTED' ? { convertedAt: new Date() } : {}),
         },
       }),
       prisma.leadStatusHistory.create({

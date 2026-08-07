@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Box, Card, Chip, Table, TableBody, TableCell, TableHead, TableRow, Typography, Button, Stack,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, FormControl, InputLabel, Select, MenuItem, Alert,
+  Divider,
   IconButton, Tooltip, InputAdornment,
 } from '@mui/material';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -11,6 +12,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import BlockIcon from '@mui/icons-material/Block';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useListUsersQuery, useCreateUserMutation, useUpdateUserMutation, useListRolesQuery, useLazyGetCredentialQuery, type UserRow } from '@/features/adminApi';
+import SalesTargetEditor, { toDrafts, fromDrafts, draftsInvalid, type TargetDraft } from '@/components/SalesTargetEditor';
 import { usePermissions } from '@/hooks/usePermissions';
 import { sentenceCase, formatDateTime } from '@/constants';
 import { SortableCell, useSort } from '@/components/SortableCell';
@@ -49,6 +51,8 @@ export default function UsersPage() {
   const [editForm, setEditForm] = useState({ email: '', phone: '', firstName: '', lastName: '', roleId: '' });
   const [reveal, setReveal] = useState<{ name: string; password: string | null } | null>(null);
   const [statusTarget, setStatusTarget] = useState<UserRow | null>(null);
+  const [newTargets, setNewTargets] = useState<TargetDraft[]>([]);
+  const [editTargets, setEditTargets] = useState<TargetDraft[]>([]);
 
   const users = data?.data ?? [];
   const canEdit = has('user.update');
@@ -61,6 +65,7 @@ export default function UsersPage() {
       email: u.email, phone: u.phone ?? '', firstName: u.firstName, lastName: u.lastName,
       roleId: u.roles[0]?.role.id ?? '',
     });
+    setEditTargets(toDrafts(u.salesTargets));
   };
   const setEdit = (k: keyof typeof editForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }));
   const saveEdit = async () => {
@@ -69,6 +74,7 @@ export default function UsersPage() {
     await updateUser({
       id: editUser.id, ...rest, phone: rest.phone || null,
       roleIds: roleId && roleId !== editUser.roles[0]?.role.id ? [roleId] : undefined,
+      targets: fromDrafts(editTargets),
     }).unwrap();
     setEditUser(null);
   };
@@ -93,8 +99,9 @@ export default function UsersPage() {
     await createUser({
       email: form.email, phone: form.phone || undefined, password: form.password, firstName: form.firstName, lastName: form.lastName,
       roleIds: [form.roleId],
+      targets: fromDrafts(newTargets),
     }).unwrap();
-    setOpen(false); setForm(empty);
+    setOpen(false); setForm(empty); setNewTargets([]);
   };
 
   return (
@@ -179,11 +186,13 @@ export default function UsersPage() {
                 {assignableRoles.map((r) => <MenuItem key={r.id} value={r.id}>{r.label}</MenuItem>)}
               </Select>
             </FormControl>
+            <Divider />
+            <SalesTargetEditor value={newTargets} onChange={setNewTargets} />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={isLoading || !form.email || !form.password || !form.roleId} onClick={submit}>Create</Button>
+          <Button variant="contained" disabled={isLoading || !form.email || !form.password || !form.roleId || draftsInvalid(newTargets)} onClick={submit}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -207,11 +216,13 @@ export default function UsersPage() {
             {editUser?.id === user?.id && (
               <Alert severity="info">You can't change your own role.</Alert>
             )}
+            <Divider />
+            <SalesTargetEditor value={editTargets} onChange={setEditTargets} />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditUser(null)}>Cancel</Button>
-          <Button variant="contained" disabled={isSaving || !editForm.email} onClick={saveEdit}>Save</Button>
+          <Button variant="contained" disabled={isSaving || !editForm.email || draftsInvalid(editTargets)} onClick={saveEdit}>Save</Button>
         </DialogActions>
       </Dialog>
 
