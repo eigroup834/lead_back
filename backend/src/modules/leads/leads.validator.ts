@@ -92,6 +92,7 @@ export const createLeadSchema = z.object({
   leadType: z.enum(LEAD_TYPES).optional(),
   status: z.enum(LEAD_STATUSES).default('NEW'),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
+  assignToId: z.string().uuid().optional(),
 });
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 

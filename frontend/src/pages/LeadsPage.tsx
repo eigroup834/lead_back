@@ -57,11 +57,11 @@ const ALL_COLUMNS = [
 // away. "New" covers both NEW and ASSIGNED — leads that have not been touched yet.
 const STATUS_TABS: Array<{ key: string; label: string; statuses?: string[] }> = [
   { key: 'NEW', label: 'New', statuses: ['NEW', 'ASSIGNED'] },
-  { key: 'CONVERTED', label: 'Converted' },
   { key: 'INTERESTED', label: 'Interested' },
+  { key: 'NOT_REACHABLE', label: 'No Answer/Not Reachable' },
   { key: 'NOT_INTERESTED', label: 'Not Interested' },
   { key: 'INVALID', label: 'Invalid' },
-  { key: 'NOT_REACHABLE', label: 'No Answer/Not Reachable' },
+  { key: 'CONVERTED', label: 'Converted' },
 ];
 
 const statusesForTab = (key: string): string[] | undefined => {

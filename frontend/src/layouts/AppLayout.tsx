@@ -31,11 +31,11 @@ const CRUMB_LABELS: Record<string, string> = {
   followups: 'Follow-ups',
   'other-leads': 'Brochure Data',
   historical: 'Historical Data',
-  analytics: 'Analytics',
+  analytics: 'Dashboard',
   users: 'Users',
   roles: 'Roles',
   settings: 'Settings',
-  dashboard: 'Dashboard',
+  dashboard: 'Overview',
 };
 
 export default function AppLayout() {

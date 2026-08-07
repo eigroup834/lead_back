@@ -66,7 +66,7 @@ export const leadsApi = api.injectEndpoints({
     }),
     createLead: build.mutation<ApiEnvelope<Lead>, Record<string, unknown>>({
       query: (body) => ({ url: '/leads', method: 'POST', body }),
-      invalidatesTags: ['Leads', 'Dashboard'],
+      invalidatesTags: ['Leads', 'Dashboard', 'Followup'],
     }),
     bulkImportLeads: build.mutation<
       ApiEnvelope<{ created: number; failed: number; total: number; errors: Array<{ row: number; message: string }> }>,

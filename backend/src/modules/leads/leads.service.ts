@@ -71,8 +71,9 @@ export const leadsService = {
     return leadsRepository.exportRows(user, q);
   },
 
-  async create(input: CreateLeadInput) {
-    const { email, leadType, ...rest } = input;
+
+  async create(input: CreateLeadInput, createdById?: string) {
+    const { email, leadType, assignToId, ...rest } = input;
 
     if (leadType && EXTERNAL_LEAD_TYPES.has(leadType)) {
       const record = await prisma.externalLead.create({
@@ -96,9 +97,31 @@ export const leadsService = {
       return { external: true as const, record };
     }
 
-    const lead = await prisma.lead.create({
-      data: { ...rest, email: email || null, leadType },
+    const owner = assignToId ?? createdById ?? null;
+    if (owner) await assertAssignableUser(owner);
+
+    const lead = await prisma.$transaction(async (tx) => {
+      const record = await tx.lead.create({
+        data: {
+          ...rest,
+          email: email || null,
+          leadType,
+          ...(owner
+            ? { assignedUserId: owner, assignedAt: new Date(), status: 'ASSIGNED' as const }
+            : {}),
+        },
+      });
+      if (owner) {
+        await tx.leadAssignment.create({
+          data: { leadId: record.id, assignedToId: owner, assignedById: createdById ?? owner, type: 'SINGLE' },
+        });
+        await tx.leadStatusHistory.create({
+          data: { leadId: record.id, fromStatus: 'NEW', toStatus: 'ASSIGNED', changedById: createdById ?? owner },
+        });
+      }
+      return record;
     });
+
     await bustDashboard();
     return { external: false as const, record: lead };
   },

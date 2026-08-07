@@ -38,7 +38,7 @@ export const leadsController = {
   },
 
   async create(req: Request, res: Response) {
-    const { external, record } = await leadsService.create(req.body);
+    const { external, record } = await leadsService.create(req.body, req.user!.id);
     return created(res, record, { external });
   },
 

@@ -13,7 +13,7 @@ import PageHeader from '@/components/PageHeader';
 import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
 import { PRIORITIES, NAME_RE, EMAIL_RE, MOBILE_RE, HISTORICAL_INDUSTRIES, leadsListPath, prettyLabel } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
-import { useCreateLeadMutation, useAssignSingleMutation } from '@/features/leads/leadsApi';
+import { useCreateLeadMutation } from '@/features/leads/leadsApi';
 import { useCreateHistoricalLeadMutation } from '@/features/historical/historicalApi';
 
 const empty = {
@@ -81,7 +81,6 @@ export default function AddLeadPage() {
   const [destination, setDestination] = useState<'LEAD' | 'HISTORICAL'>('LEAD');
   const [createLead, { isLoading, error }] = useCreateLeadMutation();
   const [createHistorical, { isLoading: savingHist }] = useCreateHistoricalLeadMutation();
-  const [assignSingle] = useAssignSingleMutation();
   const { guard: dupGuard, dialog: dupDialog } = useHistoricalDuplicateGuard();
   const [toast, setToast] = useState<string | null>(null);
 
@@ -122,6 +121,7 @@ export default function AddLeadPage() {
 
     const payload: Record<string, unknown> = {
       source: 'MANUAL', status: form.status, priority: form.priority,
+      assignToId: ownerId,
     };
     if (form.leadType) payload.leadType = form.leadType;
     (Object.keys(empty) as (keyof Form)[]).forEach((k) => {
@@ -135,19 +135,10 @@ export default function AddLeadPage() {
       return;
     }
     const goToLead = () => {
-      setToast('Lead added');
+      setToast('Lead added and assigned to you');
       setTimeout(() => navigate(`/leads/${res.data.id}`), 600);
     };
-
-    if (!ownerId) {
-      goToLead();
-      return;
-    }
-
-    await dupGuard([res.data.id], async () => {
-      try { await assignSingle({ leadId: res.data.id, assignToId: ownerId }).unwrap(); } catch { }
-      goToLead();
-    });
+    await dupGuard([res.data.id], goToLead);
   };
 
   return (

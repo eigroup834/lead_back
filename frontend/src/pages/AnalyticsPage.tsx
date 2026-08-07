@@ -13,17 +13,16 @@ import EmojiEventsIcon2 from '@mui/icons-material/MilitaryTech';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import SquareFootIcon from '@mui/icons-material/SquareFoot';
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, LineChart, Line,
-  PieChart, Pie, Cell, LabelList,
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, LabelList,
 } from 'recharts';
 import ChartCard from '@/components/ChartCard';
 import StatCard from '@/components/StatCard';
 import {
-  CHART_COLORS, MEDAL_COLORS, statusLabel, sourceChannelLabel, prettyLabel,
+  CHART_COLORS, MEDAL_COLORS, sourceChannelLabel, prettyLabel,
   currentSeason, seasonLabel,
 } from '@/constants';
 import {
-  useDashFiltersQuery, useSummaryQuery, useFunnelQuery, useMonthlyTrendQuery,
+  useDashFiltersQuery, useSummaryQuery,
   useTeamPerformanceQuery, useConversionBySourceQuery, useTargetYearsQuery,
   useTargetAchievementQuery, type DashFilter,
 } from '@/features/dashboard/dashboardApi';
@@ -74,8 +73,6 @@ export default function AnalyticsPage() {
 
   const { data: refs } = useDashFiltersQuery();
   const { data: summary, isFetching: sLoading } = useSummaryQuery(filter);
-  const { data: funnel } = useFunnelQuery(filter);
-  const { data: monthly } = useMonthlyTrendQuery({ ...filter, months: 12 });
   const { data: team, isLoading: teamLoading } = useTeamPerformanceQuery(filter);
   const { data: convBySource, isLoading: sourceLoading } = useConversionBySourceQuery(filter);
   const [season, setSeason] = useState(currentSeason());
@@ -85,8 +82,6 @@ export default function AnalyticsPage() {
   const s = summary?.data;
   const teamData = team?.data ?? [];
   const teamRows = useMemo(() => sortRows(teamData, sort.by, sort.dir, TEAM_SORT_VALUE), [teamData, sort]);
-  const monthlyData = (monthly?.data ?? []).map((m) => ({ ...m, label: new Date(m.month).toLocaleDateString(undefined, { month: 'short', year: '2-digit' }) }));
-  const funnelData = (funnel?.data ?? []).map((f) => ({ ...f, status: statusLabel(f.status) }));
   const sourceData = (convBySource?.data ?? []).map((r) => ({
     name: sourceChannelLabel(r.key) || prettyLabel(r.key),
     Leads: r.total,
@@ -108,7 +103,7 @@ export default function AnalyticsPage() {
   return (
     <Box>
       <PageHeader
-        title={selfOnly ? 'My Analytics' : 'Analytics'}
+        title={selfOnly ? 'My Dashboard' : 'Dashboard'}
         subtitle={selfOnly
           ? 'Your own pipeline, conversions and space booked.'
           : 'Pipeline performance and team conversion.'}
@@ -321,34 +316,6 @@ export default function AnalyticsPage() {
                 </BarChart>
               </ResponsiveContainer>
             )}
-          </ChartCard>
-        </Grid>
-
-        <Grid item xs={12} md={8}>
-          <ChartCard title="Monthly Trend — leads vs conversions" height={300}>
-            <ResponsiveContainer>
-              <LineChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="label" fontSize={12} />
-                <YAxis fontSize={12} allowDecimals={false} />
-                <Tooltip /><Legend />
-                <Line type="monotone" dataKey="count" name="New Leads" stroke="#4f46e5" strokeWidth={2} />
-                <Line type="monotone" dataKey="converted" name="Converted" stroke="#16a34a" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <ChartCard title="Status Funnel" height={300}>
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={funnelData} dataKey="count" nameKey="status" innerRadius={50} outerRadius={90} paddingAngle={2}>
-                  {funnelData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                </Pie>
-                <Tooltip /><Legend />
-              </PieChart>
-            </ResponsiveContainer>
           </ChartCard>
         </Grid>
 

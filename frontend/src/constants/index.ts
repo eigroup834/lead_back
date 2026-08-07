@@ -186,14 +186,14 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon, permission: 'dashboard.view', maxLevel: 1 },
+  { label: 'Dashboard', path: '/analytics', icon: InsightsIcon, permission: 'analytics.view' },
+  { label: 'Overview', path: '/dashboard', icon: DashboardIcon, permission: 'dashboard.view', maxLevel: 1 },
   { label: 'Lead Management', path: '/leads', icon: GroupsIcon, permission: 'lead.view', maxLevel: 2 },
   { label: 'Assigned Leads', path: '/leads/assigned', icon: AssignmentIndIcon, permission: 'lead.view' },
   { label: 'Followups', path: '/followups', icon: EventNoteIcon, permission: 'lead.view' },
   { label: 'Historical Data', path: '/historical', icon: HistoryIcon, permission: 'historical.view' },
   { label: 'Brochure Data', path: '/other-leads', icon: GroupWorkIcon, permission: 'lead.view' },
   { label: 'Add Lead', path: '/leads/new', icon: PersonAddAlt1Icon, permission: 'lead.create' },
-  { label: 'Analytics', path: '/analytics', icon: InsightsIcon, permission: 'analytics.view' },
   { label: 'Users', path: '/users', icon: PeopleIcon, permission: 'user.view' },
   { label: 'Roles', path: '/roles', icon: SecurityIcon, permission: 'role.manage' },
   { label: 'Settings', path: '/settings', icon: SettingsIcon, maxLevel: 1 },
