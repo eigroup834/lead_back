@@ -23,7 +23,7 @@ import { SortableCell, useSort } from '@/components/SortableCell';
 import { useHistoricalDuplicateGuard } from '@/components/HistoricalDuplicateGuard';
 import {
   LEAD_SOURCE_CHANNELS,
-  prettyLabel, sourceChannelLabel, formatDate, formatDateTime,
+  prettyLabel, sourceChannelLabel, leadSourceLabel, formatDate, formatDateTime,
 } from '@/constants';
 import { useAppSelector } from '@/store';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -565,7 +565,7 @@ function renderCell(key: string, l: Lead) {
     }
     case 'assignedUser': return l.assignedUser ? `${l.assignedUser.firstName} ${l.assignedUser.lastName}` : <Chip label="Unassigned" size="small" variant="outlined" />;
     case 'source': {
-      const label = l.sourceChannel ? sourceChannelLabel(l.sourceChannel) : (l.source ? prettyLabel(l.source) : '');
+      const label = leadSourceLabel(l);
       return label ? <Chip label={label} size="small" variant="outlined" /> : '—';
     }
     default: return (l as unknown as Record<string, string>)[key] || '—';

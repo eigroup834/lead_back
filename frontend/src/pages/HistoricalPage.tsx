@@ -193,7 +193,7 @@ export default function HistoricalPage() {
     <Box>
       <PageHeader
         title="Historical Data"
-        subtitle="Converted leads archived by event year. Move any back to Lead Management to work them for a new event."
+        subtitle="Converted leads archived by event year."
       />
 
       <Card>

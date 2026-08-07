@@ -11,7 +11,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import LeadEditDialog from '@/components/LeadEditDialog';
 import StatusChip from '@/components/StatusChip';
 import {
-  LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES, prettyLabel, sentenceCase, statusLabel, sourceChannelLabel,
+  LEAD_DETAIL_STATUS_OPTIONS, EXTERNAL_LEAD_TYPES, prettyLabel, sentenceCase, statusLabel, leadSourceLabel,
   formatDate, formatDateTime,
   type ExternalLeadType,
 } from '@/constants';
@@ -143,7 +143,7 @@ export default function LeadDetailsPage() {
               <Field label="Industry" value={lead.industry} />
               <Field label="Country" value={lead.country} />
               <Field label="City" value={lead.city} />
-              <Field label="Source" value={lead.sourceChannel ? sourceChannelLabel(lead.sourceChannel) : lead.learnAbout} />
+              <Field label="Source" value={leadSourceLabel(lead)} />
               {lead.eventName && <Field label="Event" value={lead.eventName} />}
               {lead.shellSpace && <Field label="Space enquired" value={lead.shellSpace} />}
               <Field label="Assigned To" value={lead.assignedUser ? `${lead.assignedUser.firstName} ${lead.assignedUser.lastName}` : 'Unassigned'} />

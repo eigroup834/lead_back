@@ -9,7 +9,7 @@ import {
 import StatusChip from '@/components/StatusChip';
 import {
   LEAD_STATUSES, FOLLOWUP_SCOPES, PRIORITIES, PRIORITY_COLOR,
-  sentenceCase, statusLabel, sourceChannelLabel, prettyLabel, formatDate, formatDateTime,
+  sentenceCase, statusLabel, leadSourceLabel, formatDate, formatDateTime,
 } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -75,7 +75,7 @@ function leadDateCell(lead?: FollowupLead) {
 }
 
 function sourceCell(lead?: FollowupLead) {
-  const label = lead?.sourceChannel ? sourceChannelLabel(lead.sourceChannel) : (lead?.source ? prettyLabel(lead.source) : '');
+  const label = lead ? leadSourceLabel(lead) : '';
   return label ? <Chip label={label} size="small" variant="outlined" /> : '—';
 }
 

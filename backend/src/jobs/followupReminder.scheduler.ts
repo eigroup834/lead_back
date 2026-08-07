@@ -4,20 +4,19 @@ import { logger } from '@config/logger';
 import { smsService } from '@services/sms.service';
 import { mailService } from '@services/mail.service';
 import { istDateTimeToUtc } from '@utils/ist';
+import { emailShell, MAIL } from '@services/emailLayout';
 
 let running = false;
 let timer: NodeJS.Timeout | null = null;
 
 const MS_PER_MINUTE = 60_000;
 const MAX_PER_RUN = 500;
+const NEWLINE = String.fromCharCode(10);
 
 function buildMessage(params: { time: string; person: string; company: string }): string {
   const { time, person, company } = params;
   return `Dear Team Member ,You have a follow-up scheduled today at ${time} with ${person} from ${company} Log in to the lead crm portal for more details. @Exhibitions India`;
 }
-
-const esc = (v: string) =>
-  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function buildEmail(params: { time: string; person: string; company: string; assignee: string; leadId?: string; note?: string | null }) {
   const { time, person, company, assignee, leadId, note } = params;
@@ -34,19 +33,20 @@ function buildEmail(params: { time: string; person: string; company: string; ass
     '',
     ...rows.map(([k, v]) => `${k}: ${v}`),
     ...(url ? ['', `Open the lead: ${url}`] : []),
-  ].join('\n');
+  ].join(NEWLINE);
 
-  const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">
-      <p><strong>${esc(assignee)}</strong>, you have a follow-up scheduled today at <strong>${esc(time)}</strong>.</p>
-      <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;margin:12px 0">
-        ${rows.map(([k, v]) =>
-          `<tr><td style="border:1px solid #e2e8f0;background:#f8fafc"><strong>${esc(k)}</strong></td>` +
-          `<td style="border:1px solid #e2e8f0">${esc(v)}</td></tr>`).join('')}
-      </table>
-      ${url ? `<p><a href="${esc(url)}" style="background:#4f46e5;color:#fff;padding:9px 16px;border-radius:6px;text-decoration:none">Open the lead</a></p>` : ''}
-      <p style="color:#64748b;font-size:12px">Sent by ${esc(env.APP_NAME)}.</p>
-    </div>`;
+  const html = emailShell({
+    // Amber rather than indigo: this one is time-critical, and the colour says so
+    // before the words do.
+    accent: MAIL.amber,
+    eyebrow: 'Follow-up due today',
+    title: company,
+    intro: `Hi ${assignee} — you have a follow-up scheduled with ${person} today.`,
+    preheader: `Today at ${time} (IST) — ${person} at ${company}`,
+    highlight: { label: 'Scheduled for', value: `Today at ${time} IST` },
+    rows,
+    cta: url ? { label: 'Open the lead', url } : undefined,
+  });
 
   return { subject: `Follow-up today at ${time} — ${company}`, text, html };
 }

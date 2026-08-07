@@ -85,17 +85,15 @@ export default function AnalyticsPage() {
   const maxSourceLeads = Math.max(0, ...sourceData.map((r) => r.Leads));
   const teamChart = teamData.slice(0, 10).map((t) => ({ name: t.name.split(' ')[0], Assigned: t.assigned, Converted: t.converted, Calls: t.calls }));
 
+  // Five tiles across for the full pipeline view, four when Unassigned is hidden.
+  const kpiWidth = selfOnly ? 3 : 2.4;
+
   const clear = () => { setDateFrom(''); setDateTo(''); setUserId(''); };
 
   return (
     <Box>
       <PageHeader
         title={selfOnly ? 'My Dashboard' : 'Dashboard'}
-        subtitle={selfOnly
-          ? 'Your own pipeline, conversions and space booked.'
-          : 'Pipeline performance and team conversion.'}
-        // One control does not need a card around it — a bordered input inside a
-        // bordered card reads as a box in a box. It lives in the header instead.
         actions={showFilterBar && (
           <>
             {sLoading && <CircularProgress size={18} sx={{ mr: 0.5 }} />}
@@ -123,11 +121,15 @@ export default function AnalyticsPage() {
       />
 
       <Grid container spacing={2.5} sx={{ mb: 0.5 }}>
-        <Grid item xs={6} md={2.4}><StatCard label="Total" value={s?.total} icon={GroupsIcon} loading={sLoading} /></Grid>
-        <Grid item xs={6} md={2.4}><StatCard label="Assigned" value={s?.assigned} icon={AssignmentTurnedInIcon} color="success.main" loading={sLoading} /></Grid>
-        <Grid item xs={6} md={2.4}><StatCard label="Unassigned" value={s?.unassigned} icon={HourglassEmptyIcon} color="warning.main" loading={sLoading} /></Grid>
-        <Grid item xs={6} md={2.4}><StatCard label="Converted" value={s?.converted} icon={EmojiEventsIcon2} color="success.main" loading={sLoading} /></Grid>
-        <Grid item xs={6} md={2.4}><StatCard label="Conversion" value={s?.conversionRate} suffix="%" icon={TrendingUpIcon} loading={sLoading} /></Grid>
+        <Grid item xs={6} md={kpiWidth}><StatCard label="Total" value={s?.total} icon={GroupsIcon} loading={sLoading} /></Grid>
+        <Grid item xs={6} md={kpiWidth}><StatCard label="Assigned" value={s?.assigned} icon={AssignmentTurnedInIcon} color="success.main" loading={sLoading} /></Grid>
+        {/* Unassigned is a pipeline-wide number. A self-scoped view only ever counts
+            leads already assigned to that person, so it would always read 0. */}
+        {!selfOnly && (
+          <Grid item xs={6} md={kpiWidth}><StatCard label="Unassigned" value={s?.unassigned} icon={HourglassEmptyIcon} color="warning.main" loading={sLoading} /></Grid>
+        )}
+        <Grid item xs={6} md={kpiWidth}><StatCard label="Converted" value={s?.converted} icon={EmojiEventsIcon2} color="success.main" loading={sLoading} /></Grid>
+        <Grid item xs={6} md={kpiWidth}><StatCard label="Conversion" value={s?.conversionRate} suffix="%" icon={TrendingUpIcon} loading={sLoading} /></Grid>
       </Grid>
 
       <Grid container spacing={2.5} sx={{ mt: 0.5 }} alignItems="stretch">

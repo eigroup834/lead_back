@@ -130,6 +130,19 @@ export function prettyLabel(v: string): string {
 export const sourceChannelLabel = (v?: string | null) =>
   LEAD_SOURCE_CHANNELS.find((c) => c.value === v)?.label ?? (v ? prettyLabel(v) : '');
 
+// Where a lead came from, resolved the same way on every screen: the specific
+// intake channel if there is one, otherwise the source (which is how manual and
+// historical leads identify themselves), otherwise how they heard about us.
+export const leadSourceLabel = (l: {
+  sourceChannel?: string | null;
+  source?: string | null;
+  learnAbout?: string | null;
+}): string => {
+  if (l.sourceChannel) return sourceChannelLabel(l.sourceChannel);
+  if (l.source) return prettyLabel(l.source);
+  return l.learnAbout || '';
+};
+
 // Dates read the same everywhere: 05 Aug 26. A named month removes the
 // day/month ambiguity that plain numeric dates carry across locales.
 const DATE_FMT: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: '2-digit' };
