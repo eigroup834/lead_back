@@ -1,4 +1,4 @@
-import { Box, Button, IconButton, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import { Box, Button, IconButton, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import { currentSeason, seasonLabel } from '@/constants';
@@ -23,18 +23,15 @@ export const fromDrafts = (drafts: TargetDraft[]): SalesTarget[] => {
 export const draftsInvalid = (drafts: TargetDraft[]) =>
   drafts.some((d) => d.targetSqm.trim() !== '' && (Number.isNaN(Number(d.targetSqm)) || Number(d.targetSqm) < 0));
 
-// A few seasons either side of now — enough to plan ahead and correct the past.
-const YEAR_OPTIONS = (() => {
-  const now = currentSeason();
-  return Array.from({ length: 8 }, (_, i) => now - 2 + i);
-})();
-
+// Targets are set for the season in progress only. A target already stored against
+// another season still displays and can be removed — it just cannot be added anew.
 export default function SalesTargetEditor({ value, onChange }: {
   value: TargetDraft[];
   onChange: (next: TargetDraft[]) => void;
 }) {
   const used = new Set(value.map((v) => v.year));
-  const nextFreeYear = YEAR_OPTIONS.find((y) => !used.has(y)) ?? currentSeason();
+  const thisSeason = currentSeason();
+  const seasonTaken = used.has(thisSeason);
 
   const setRow = (i: number, patch: Partial<TargetDraft>) =>
     onChange(value.map((row, j) => (j === i ? { ...row, ...patch } : row)));
@@ -43,24 +40,19 @@ export default function SalesTargetEditor({ value, onChange }: {
     <Box>
       <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Sales targets</Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-        Space to book per season, in sqm. A season runs April to March and is named for the
-        year its March event falls in.
+        Space to book this season, in sqm. The {currentSeason()} season runs {seasonLabel(currentSeason())},
+        named for the year its March event falls in.
       </Typography>
 
       <Stack spacing={1}>
         {value.map((row, i) => (
           <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
             <TextField
-              select size="small" label="Season" value={row.year}
-              onChange={(e) => setRow(i, { year: Number(e.target.value) })}
-              sx={{ minWidth: 190 }}
-            >
-              {YEAR_OPTIONS.map((y) => (
-                <MenuItem key={y} value={y} disabled={y !== row.year && used.has(y)}>
-                  {y} · {seasonLabel(y)}
-                </MenuItem>
-              ))}
-            </TextField>
+              size="small" label="Season"
+              value={`${row.year} · ${seasonLabel(row.year)}`}
+              disabled
+              sx={{ minWidth: 210 }}
+            />
             <TextField
               size="small" label="Target (sqm)" type="number" value={row.targetSqm}
               onChange={(e) => setRow(i, { targetSqm: e.target.value })}
@@ -79,9 +71,10 @@ export default function SalesTargetEditor({ value, onChange }: {
 
       <Button
         size="small" startIcon={<AddIcon />} sx={{ mt: value.length ? 1 : 0 }}
-        onClick={() => onChange([...value, { year: nextFreeYear, targetSqm: '' }])}
+        disabled={seasonTaken}
+        onClick={() => onChange([...value, { year: thisSeason, targetSqm: '' }])}
       >
-        Add season
+        {seasonTaken ? `Target set for ${thisSeason}` : `Add target for ${thisSeason}`}
       </Button>
     </Box>
   );

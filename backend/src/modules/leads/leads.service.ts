@@ -277,7 +277,35 @@ export const leadsService = {
   async get(id: string) {
     const lead = await leadsRepository.findById(id);
     if (!lead) throw AppError.notFound('Lead not found');
-    return lead;
+    const historicalOrigin = lead.source === 'HISTORICAL'
+      ? await prisma.historicalLead.findFirst({
+        where: { restoredLeadId: id },
+        select: {
+          id: true, histCode: true, eventName: true, eventYear: true, branchOffice: true,
+          spaceSqm: true, industry: true, specialRemarks: true, exhHistory: true,
+          lastContactMeet: true, lastContactEmail: true, lastContactMobile: true,
+          dateOfConfirmation: true, assignedTo: true,
+          assignedUser: { select: { firstName: true, lastName: true } },
+        },
+      })
+      : null;
+
+    // historical_leads.assigned_to holds a user id on almost every row, not a name.
+    // Resolve it through the relation and only fall back to the raw column when it
+    // actually contains something human-readable.
+    const looksLikeId = (v: string | null) =>
+      !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.trim());
+
+    const origin = historicalOrigin && {
+      ...historicalOrigin,
+      assignedTo: historicalOrigin.assignedUser
+        ? `${historicalOrigin.assignedUser.firstName} ${historicalOrigin.assignedUser.lastName}`.trim()
+        : looksLikeId(historicalOrigin.assignedTo)
+          ? null
+          : historicalOrigin.assignedTo,
+    };
+
+    return { ...lead, historicalOrigin: origin };
   },
 
   async update(id: string, input: UpdateLeadInput, editedById?: string) {

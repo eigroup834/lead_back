@@ -15,6 +15,20 @@ async function bustDashboard() {
   await cache.delPattern('dash:*');
 }
 
+function searchPrefixOr(
+  raw: string,
+  fields: Array<'company' | 'name' | 'email'>,
+): Prisma.HistoricalLeadWhereInput[] {
+  const q = raw.trim();
+  const insensitive = { mode: 'insensitive' as const };
+  return fields.flatMap((f) => [
+    { [f]: { startsWith: q, ...insensitive } } as Prisma.HistoricalLeadWhereInput,
+    ...[' ', '.', ',', '/', '-'].map(
+      (sep) => ({ [f]: { contains: `${sep}${q}`, ...insensitive } }) as Prisma.HistoricalLeadWhereInput,
+    ),
+  ]);
+}
+
 function historicalScope(user: AuthUser): Prisma.HistoricalLeadWhereInput {
   return user.level === 1 ? {} : { assignedUserId: user.id };
 }
@@ -23,28 +37,6 @@ export function carryOverRemarks(r: Prisma.HistoricalLeadGetPayload<object>): st
   const parts: string[] = [];
   if (r.remark?.trim()) parts.push(r.remark.trim());
   if (r.specialRemarks?.trim()) parts.push(`Special remarks: ${r.specialRemarks.trim()}`);
-
-  const extras: Array<[string, unknown]> = [
-    ['Event year', r.eventYear],
-    ['Branch office', r.branchOffice],
-    ['Historical code', r.histCode],
-    ['Last contact (meet)', r.lastContactMeet],
-    ['Last contact (email)', r.lastContactEmail],
-    ['Last contact (mobile)', r.lastContactMobile],
-    ['Date of confirmation', r.dateOfConfirmation ? r.dateOfConfirmation.toISOString().slice(0, 10) : null],
-  ];
-  const listed = extras
-    .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
-    .map(([k, v]) => `${k}: ${String(v).trim()}`);
-  if (listed.length) parts.push(listed.join(' | '));
-
-  const history = Array.isArray(r.exhHistory) ? (r.exhHistory as Array<{ year?: unknown; sqm_spo?: unknown }>) : [];
-  const historyText = history
-    .filter((h) => h && (h.year || h.sqm_spo))
-    .map((h) => `${h.year ?? '?'}: ${h.sqm_spo ?? '—'}`)
-    .join(', ');
-  if (historyText) parts.push(`Exhibition history — ${historyText}`);
-
   return parts.length ? parts.join('\n') : null;
 }
 
@@ -137,12 +129,8 @@ export const historicalService = {
       if (q.dateFrom) (where.archivedAt as Prisma.DateTimeFilter).gte = q.dateFrom;
       if (q.dateTo) (where.archivedAt as Prisma.DateTimeFilter).lte = q.dateTo;
     }
-    if (q.q) {
-      where.OR = [
-        { company: { contains: q.q, mode: 'insensitive' } },
-        { name: { contains: q.q, mode: 'insensitive' } },
-        { email: { contains: q.q, mode: 'insensitive' } },
-      ];
+    if (q.q?.trim()) {
+      where.OR = searchPrefixOr(q.q, ['company', 'name', 'email']);
     }
 
     const [total, items] = await prisma.$transaction([

@@ -11,6 +11,24 @@ import { carryOverRemarks, splitName } from '@modules/historical/historical.serv
 
 const apply = process.argv.includes('--apply');
 
+const GENERATED_LINE = /^(Event year|Branch office|Historical code|Last contact|Date of confirmation)\s*:/;
+
+function stripGeneratedRemarkLines(remarks: string | null): string | null {
+  if (!remarks) return remarks;
+  const kept = remarks
+    .split(String.fromCharCode(10))
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return false;
+      if (t.startsWith('Exhibition history')) return false;
+      // The metadata line is pipe-joined; test each segment.
+      return !t.split('|').every((seg) => GENERATED_LINE.test(seg.trim()));
+    })
+    .join(String.fromCharCode(10))
+    .trim();
+  return kept.length ? kept : null;
+}
+
 (async () => {
   const leads = await prisma.lead.findMany({
     where: { source: 'HISTORICAL', deletedAt: null },
@@ -51,6 +69,9 @@ const apply = process.argv.includes('--apply');
     fill('industry', lead.industry, src.industry);
     fill('shellSpace', lead.shellSpace, src.spaceSqm);
     fill('remarks', lead.remarks, carryOverRemarks(src));
+
+    const cleaned = stripGeneratedRemarkLines(lead.remarks);
+    if (cleaned !== lead.remarks) data.remarks = cleaned;
     fill('eventName', lead.eventName, src.eventName);
     fill('createDate', lead.createDate, src.dateOfConfirmation);
 

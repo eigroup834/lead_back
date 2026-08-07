@@ -43,7 +43,31 @@ export interface PageMeta {
   pages: number;
 }
 
+export interface ExhHistoryEntry {
+  year?: number | string;
+  sqm_spo?: string;
+}
+
+/** The archive row a lead was converted from, read live rather than copied. */
+export interface HistoricalOrigin {
+  id: string;
+  histCode: string | null;
+  eventName: string | null;
+  eventYear: number | null;
+  branchOffice: string | null;
+  spaceSqm: string | null;
+  industry: string | null;
+  specialRemarks: string | null;
+  exhHistory: ExhHistoryEntry[];
+  lastContactMeet: string | null;
+  lastContactEmail: string | null;
+  lastContactMobile: string | null;
+  dateOfConfirmation: string | null;
+  assignedTo: string | null;
+}
+
 export interface LeadDetail extends Lead {
+  historicalOrigin?: HistoricalOrigin | null;
   designation: string | null;
   address: string | null;
   website: string | null;

@@ -5,6 +5,7 @@ import {
   Button, MenuItem, Select, FormControl, InputLabel, List, ListItem, ListItemText, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, Alert,
   Radio, RadioGroup, FormControlLabel, FormLabel,
+  Table, TableHead, TableBody, TableRow, TableCell,
 } from '@mui/material';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import EditIcon from '@mui/icons-material/Edit';
@@ -63,6 +64,8 @@ export default function LeadDetailsPage() {
   // A converted lead is closed: no edit, reassign, status change or reclassify.
   // The server enforces this too; here it just keeps the controls out of the way.
   const isConverted = lead.status === 'CONVERTED';
+  const origin = lead.historicalOrigin ?? null;
+  const fromHistorical = lead.source === 'HISTORICAL';
   const spaceKind = lead.sqmSpaceType === 'RAW' ? 'Raw space'
     : lead.sqmSpaceType === 'SHELL' ? 'Shell space' : null;
   const bookedSpace = lead.sqmSpace
@@ -151,7 +154,7 @@ export default function LeadDetailsPage() {
             </CardContent>
           </Card>
 
-          {canModify && (
+          {canModify && !fromHistorical && (
             <Card sx={{ mt: 2.5 }}>
               <CardHeader
                 title="Reclassify lead"
@@ -166,6 +169,48 @@ export default function LeadDetailsPage() {
                     </Button>
                   ))}
                 </Stack>
+              </CardContent>
+            </Card>
+          )}
+
+          {origin && (
+            <Card sx={{ mt: 2.5 }}>
+              <CardHeader
+                title="Exhibition History"
+                subheader={origin.histCode ? `Archive record ${origin.histCode}` : 'From the historical archive'}
+                titleTypographyProps={{ variant: 'subtitle1' }}
+                subheaderTypographyProps={{ variant: 'caption' }}
+              />
+              <CardContent sx={{ pt: 0 }}>
+                {origin.exhHistory?.length > 0 && (
+                  <Table size="small" sx={{ mb: 2 }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Year</TableCell>
+                        <TableCell align="right">Space / SPO</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {origin.exhHistory.map((h, i) => (
+                        <TableRow key={i}>
+                          <TableCell sx={{ fontWeight: 600 }}>{h.year ?? '—'}</TableCell>
+                          <TableCell align="right">{h.sqm_spo || '—'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+                <Field label="Event" value={[origin.eventName, origin.eventYear].filter(Boolean).join(' ')} />
+                <Field label="Space (sqm)" value={origin.spaceSqm} />
+                <Field label="Associated with" value={origin.assignedTo} />
+                {origin.specialRemarks && (
+                  <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                      Special remarks
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{origin.specialRemarks}</Typography>
+                  </Box>
+                )}
               </CardContent>
             </Card>
           )}
