@@ -7,7 +7,6 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { RequireAuth, RequirePermission } from './guards';
 
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
-const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
 const AddLeadPage = lazy(() => import('@/pages/AddLeadPage'));
 const LeadDetailsPage = lazy(() => import('@/pages/LeadDetailsPage'));
@@ -41,7 +40,6 @@ export default function AppRoutes() {
           }
         >
           <Route index element={<LandingRedirect />} />
-          <Route path="dashboard" element={<RequirePermission permission="dashboard.view" maxLevel={1}><DashboardPage /></RequirePermission>} />
           <Route path="leads" element={<RequirePermission permission="lead.view" maxLevel={2}><LeadsPage key="leads-all" /></RequirePermission>} />
           <Route path="leads/new" element={<RequirePermission permission="lead.create"><AddLeadPage /></RequirePermission>} />
           <Route path="leads/assigned" element={<RequirePermission permission="lead.view"><LeadsPage key="leads-assigned" assignedOnly /></RequirePermission>} />

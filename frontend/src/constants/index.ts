@@ -1,5 +1,4 @@
 import type { SvgIconComponent } from '@mui/icons-material';
-import DashboardIcon from '@mui/icons-material/Dashboard';
 import GroupsIcon from '@mui/icons-material/Groups';
 import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
@@ -187,7 +186,6 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/analytics', icon: InsightsIcon, permission: 'analytics.view' },
-  { label: 'Overview', path: '/dashboard', icon: DashboardIcon, permission: 'dashboard.view', maxLevel: 1 },
   { label: 'Lead Management', path: '/leads', icon: GroupsIcon, permission: 'lead.view', maxLevel: 2 },
   { label: 'Assigned Leads', path: '/leads/assigned', icon: AssignmentIndIcon, permission: 'lead.view' },
   { label: 'Followups', path: '/followups', icon: EventNoteIcon, permission: 'lead.view' },
@@ -199,6 +197,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Settings', path: '/settings', icon: SettingsIcon, maxLevel: 1 },
 ];
 
-export const landingPath = (level: number) => (level === 1 ? '/dashboard' : '/leads/assigned');
+export const landingPath = (level: number) => (level === 1 ? '/analytics' : '/leads/assigned');
 
 export const leadsListPath = (level: number) => (level <= 2 ? '/leads' : '/leads/assigned');

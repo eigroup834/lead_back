@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import {
   Box, Grid, Typography, Card, CardHeader, CardContent, Table, TableHead, TableRow, TableCell,
-  TableBody, LinearProgress, Stack, Avatar, CircularProgress, Toolbar, TextField, FormControl,
-  InputLabel, Select, MenuItem, Button, Divider, Chip, Alert,
+  TableBody, LinearProgress, Stack, Avatar, CircularProgress, TextField,
+  MenuItem, Button, Divider, Chip, Alert, alpha,
+  Tooltip as MuiTooltip,
 } from '@mui/material';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -13,18 +14,16 @@ import EmojiEventsIcon2 from '@mui/icons-material/MilitaryTech';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import SquareFootIcon from '@mui/icons-material/SquareFoot';
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, LabelList,
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from 'recharts';
 import ChartCard from '@/components/ChartCard';
 import StatCard from '@/components/StatCard';
 import {
   CHART_COLORS, MEDAL_COLORS, sourceChannelLabel, prettyLabel,
-  currentSeason, seasonLabel,
 } from '@/constants';
 import {
   useDashFiltersQuery, useSummaryQuery,
-  useTeamPerformanceQuery, useConversionBySourceQuery, useTargetYearsQuery,
-  useTargetAchievementQuery, type DashFilter,
+  useTeamPerformanceQuery, useConversionBySourceQuery, type DashFilter,
 } from '@/features/dashboard/dashboardApi';
 import type { TeamPerf } from '@/features/types';
 import { SortableCell, sortRows, useSort } from '@/components/SortableCell';
@@ -32,12 +31,10 @@ import { usePermissions } from '@/hooks/usePermissions';
 import PageHeader from '@/components/PageHeader';
 import { ChartSkeleton, SkeletonRows } from '@/components/Skeletons';
 
-type TeamSortKey = 'name' | 'assigned' | 'calls' | 'followupsDone' | 'converted' | 'conversionRate' | 'spaceBooked';
+type TeamSortKey = 'name' | 'assigned' | 'converted' | 'spaceBooked' | 'conversionRate';
 const TEAM_SORT_VALUE: Record<TeamSortKey, (t: TeamPerf) => string | number> = {
   name: (t) => t.name,
   assigned: (t) => t.assigned,
-  calls: (t) => t.calls,
-  followupsDone: (t) => t.followupsDone,
   converted: (t) => t.converted,
   conversionRate: (t) => t.conversionRate,
   spaceBooked: (t) => t.spaceBooked,
@@ -75,9 +72,6 @@ export default function AnalyticsPage() {
   const { data: summary, isFetching: sLoading } = useSummaryQuery(filter);
   const { data: team, isLoading: teamLoading } = useTeamPerformanceQuery(filter);
   const { data: convBySource, isLoading: sourceLoading } = useConversionBySourceQuery(filter);
-  const [season, setSeason] = useState(currentSeason());
-  const { data: seasonsData } = useTargetYearsQuery();
-  const { data: targets, isLoading: targetsLoading } = useTargetAchievementQuery({ ...filter, year: season });
 
   const s = summary?.data;
   const teamData = team?.data ?? [];
@@ -88,14 +82,7 @@ export default function AnalyticsPage() {
     Converted: r.converted,
     rate: r.conversionRate,
   }));
-  const seasons = seasonsData?.data?.length ? seasonsData.data : [currentSeason()];
-  const targetRows = targets?.data ?? [];
-  const withTargets = targetRows.filter((r) => r.target > 0);
-  const seasonTotal = withTargets.reduce(
-    (acc, r) => ({ target: acc.target + r.target, achieved: acc.achieved + r.achieved }),
-    { target: 0, achieved: 0 },
-  );
-  const seasonPct = seasonTotal.target > 0 ? Number(((seasonTotal.achieved / seasonTotal.target) * 100).toFixed(1)) : 0;
+  const maxSourceLeads = Math.max(0, ...sourceData.map((r) => r.Leads));
   const teamChart = teamData.slice(0, 10).map((t) => ({ name: t.name.split(' ')[0], Assigned: t.assigned, Converted: t.converted, Calls: t.calls }));
 
   const clear = () => { setDateFrom(''); setDateTo(''); setUserId(''); };
@@ -107,33 +94,33 @@ export default function AnalyticsPage() {
         subtitle={selfOnly
           ? 'Your own pipeline, conversions and space booked.'
           : 'Pipeline performance and team conversion.'}
-        actions={hasFilter && <Chip color="primary" label="Filters applied" size="small" />}
-      />
-
-      {showFilterBar && (
-      <Card sx={{ mb: 2.5 }}>
-        <Toolbar sx={{ gap: 1.5, flexWrap: 'wrap', py: 2 }}>
-          {DATE_FILTER_ENABLED && (
-            <>
-              <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} sx={{ width: 160 }} />
-              <TextField size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} sx={{ width: 160 }} />
-            </>
-          )}
-          {!selfOnly && (
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>Team member</InputLabel>
-              <Select label="Team member" value={userId} onChange={(e) => setUserId(e.target.value)}>
+        // One control does not need a card around it — a bordered input inside a
+        // bordered card reads as a box in a box. It lives in the header instead.
+        actions={showFilterBar && (
+          <>
+            {sLoading && <CircularProgress size={18} sx={{ mr: 0.5 }} />}
+            {DATE_FILTER_ENABLED && (
+              <>
+                <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} sx={{ width: 156 }} />
+                <TextField size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} sx={{ width: 156 }} />
+              </>
+            )}
+            {!selfOnly && (
+              <TextField
+                select size="small" label="Team member" value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                sx={{ minWidth: 210 }}
+              >
                 <MenuItem value="">All members</MenuItem>
                 {[...(refs?.data.members ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((m) => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
-              </Select>
-            </FormControl>
-          )}
-          {hasFilter && <Button color="inherit" size="small" startIcon={<ClearIcon />} onClick={clear}>Clear</Button>}
-          <Box sx={{ flex: 1 }} />
-          {sLoading && <CircularProgress size={20} />}
-        </Toolbar>
-      </Card>
-      )}
+              </TextField>
+            )}
+            {hasFilter && (
+              <Button color="inherit" size="small" startIcon={<ClearIcon />} onClick={clear}>Clear</Button>
+            )}
+          </>
+        )}
+      />
 
       <Grid container spacing={2.5} sx={{ mb: 0.5 }}>
         <Grid item xs={6} md={2.4}><StatCard label="Total" value={s?.total} icon={GroupsIcon} loading={sLoading} /></Grid>
@@ -159,8 +146,7 @@ export default function AnalyticsPage() {
 
       <Grid container spacing={2.5} sx={{ mt: 0.5 }}>
         {!selfOnly && (
-        <>
-        <Grid item xs={12} md={7}>
+        <Grid item xs={12} md={4}>
           <ChartCard title="Team Performance — assigned vs converted" height={340}>
             {teamLoading ? <ChartSkeleton height={300} /> : (
               <ResponsiveContainer>
@@ -177,11 +163,91 @@ export default function AnalyticsPage() {
             )}
           </ChartCard>
         </Grid>
+        )}
 
-        <Grid item xs={12} md={5}>
+        {/* Sits beside the team chart; takes the full row when that chart is hidden. */}
+        <Grid item xs={12} md={selfOnly ? 12 : 4}>
+          <Card sx={{ height: '100%' }}>
+            <CardHeader
+              title="Conversion by Source"
+              subheader="Bar length is lead volume; the filled part is what converted"
+              titleTypographyProps={{ variant: 'h6' }}
+              subheaderTypographyProps={{ variant: 'caption' }}
+            />
+            <Divider />
+            <CardContent sx={{ height: 340, overflowY: 'auto' }}>
+              {sourceLoading && sourceData.length === 0 ? (
+                <ChartSkeleton height={200} />
+              ) : sourceData.length === 0 ? (
+                <Typography color="text.secondary" sx={{ py: 5, textAlign: 'center' }}>No source data</Typography>
+              ) : (
+                <Stack spacing={2.75}>
+                  {sourceData.map((r) => {
+                    const widthPct = maxSourceLeads ? (r.Leads / maxSourceLeads) * 100 : 0;
+                    const fillPct = r.Leads ? (r.Converted / r.Leads) * 100 : 0;
+                    return (
+                      <Box key={r.name}>
+                        <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 0.75, flexWrap: 'wrap' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 650, flex: 1, minWidth: 120 }}>
+                            {r.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {r.Leads.toLocaleString()} leads
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: SOURCE_COLORS.converted, fontWeight: 650 }}>
+                            {r.Converted} converted
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={`${r.rate}%`}
+                            color={r.Converted > 0 ? 'success' : 'default'}
+                            sx={{ minWidth: 52 }}
+                          />
+                        </Stack>
+                        <MuiTooltip
+                          arrow
+                          title={`${r.name} — ${r.Converted} of ${r.Leads} converted (${r.rate}%)`}
+                        >
+                          <Box
+                            sx={{
+                              height: 10,
+                              borderRadius: 999,
+                              width: `${Math.max(widthPct, 2)}%`,
+                              minWidth: 28,
+                              bgcolor: (t) => alpha(SOURCE_COLORS.leads, t.palette.mode === 'dark' ? 0.34 : 0.18),
+                              overflow: 'hidden',
+                              transition: 'width .5s cubic-bezier(.4,0,.2,1)',
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                height: '100%',
+                                borderRadius: 999,
+                                // A single conversion out of 94 is a sub-pixel sliver; give it a
+                                // floor so a real result is never invisible. The count beside it
+                                // carries the exact figure.
+                                width: r.Converted > 0 ? `max(${fillPct}%, 10px)` : 0,
+                                background: `linear-gradient(90deg, ${SOURCE_COLORS.converted}, #34d399)`,
+                                transition: 'width .5s cubic-bezier(.4,0,.2,1)',
+                              }}
+                            />
+                          </Box>
+                        </MuiTooltip>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+
+        {!selfOnly && (
+        <Grid item xs={12} md={4}>
           <Card sx={{ height: '100%' }}>
             <CardHeader title="Leaderboard" titleTypographyProps={{ variant: 'h6' }} />
-            <CardContent sx={{ pt: 0 }}>
+            <CardContent sx={{ pt: 0, height: 340, overflowY: 'auto' }}>
               {teamRows.slice(0, 8).map((t, i) => (
                 <Box key={t.userId} sx={{ mb: 1.5 }}>
                   <Stack direction="row" alignItems="center" spacing={1.5}>
@@ -200,124 +266,7 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </Grid>
-        </>
         )}
-
-        <Grid item xs={12}>
-          <Card>
-            <CardHeader
-              title={selfOnly ? 'My Target' : 'Targets vs Achieved'}
-              subheader={`Season ${season} · ${seasonLabel(season)} · space booked in sqm`}
-              titleTypographyProps={{ variant: 'h6' }}
-              subheaderTypographyProps={{ variant: 'caption' }}
-              action={(
-                <TextField
-                  select size="small" label="Season" value={season}
-                  onChange={(e) => setSeason(Number(e.target.value))}
-                  sx={{ minWidth: 190 }}
-                >
-                  {seasons.map((y) => <MenuItem key={y} value={y}>{y} · {seasonLabel(y)}</MenuItem>)}
-                </TextField>
-              )}
-            />
-            <Divider />
-            <CardContent>
-              {withTargets.length > 0 && !selfOnly && (
-                <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-                  <Typography variant="h5">{sqm(seasonTotal.achieved)}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    of {sqm(seasonTotal.target)} sqm · {seasonPct}% of the combined target
-                  </Typography>
-                  <Box sx={{ flex: 1 }} />
-                  <LinearProgress
-                    variant="determinate" value={Math.min(100, seasonPct)}
-                    color={seasonPct >= 100 ? 'success' : 'primary'}
-                    sx={{ flex: 1, height: 8, borderRadius: 4 }}
-                  />
-                </Stack>
-              )}
-
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Member</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Target (sqm)</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Booked (sqm)</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Deals</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Remaining</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700, width: 200 }}>Achieved</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {targetsLoading && targetRows.length === 0 && <SkeletonRows rows={5} columns={6} />}
-                  {targetRows.map((r) => (
-                    <TableRow key={r.userId} hover>
-                      <TableCell>{r.name}</TableCell>
-                      <TableCell align="right">
-                        {r.target > 0 ? sqm(r.target) : <Typography variant="caption" color="text.disabled">Not set</Typography>}
-                      </TableCell>
-                      <TableCell align="right">{sqm(r.achieved)}</TableCell>
-                      <TableCell align="right">{r.deals}</TableCell>
-                      <TableCell align="right">{r.target > 0 ? sqm(r.remaining) : '—'}</TableCell>
-                      <TableCell align="right">
-                        {r.target > 0 ? (
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <LinearProgress
-                              variant="determinate" value={Math.min(100, r.achievedPct)}
-                              color={r.achievedPct >= 100 ? 'success' : 'primary'}
-                              sx={{ flex: 1, height: 6, borderRadius: 3 }}
-                            />
-                            <Typography variant="caption" sx={{ minWidth: 46 }}>{r.achievedPct}%</Typography>
-                          </Stack>
-                        ) : (
-                          <Typography variant="caption" color="text.disabled">No target set</Typography>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!targetsLoading && targetRows.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                        No targets or bookings for this season
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12}>
-          <ChartCard title="Conversion by Source" height={320}>
-            {sourceLoading ? <ChartSkeleton height={280} /> : sourceData.length === 0 ? (
-              <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>No source data</Typography>
-            ) : (
-              <ResponsiveContainer>
-                <BarChart data={sourceData} margin={{ top: 20, right: 8, bottom: 4, left: 0 }} barGap={2}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} vertical={false} />
-                  <XAxis dataKey="name" fontSize={12} tickLine={false} />
-                  <YAxis fontSize={12} allowDecimals={false} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    cursor={{ fillOpacity: 0.06 }}
-                    formatter={(v: number, n: string) => [v, n]}
-                    labelFormatter={(label: string) => {
-                      const row = sourceData.find((d) => d.name === label);
-                      return row ? `${label} — ${row.rate}% converted` : label;
-                    }}
-                  />
-                  <Legend />
-                  <Bar dataKey="Leads" fill={SOURCE_COLORS.leads} radius={[4, 4, 0, 0]}>
-                    <LabelList dataKey="Leads" position="top" fontSize={11} />
-                  </Bar>
-                  <Bar dataKey="Converted" fill={SOURCE_COLORS.converted} radius={[4, 4, 0, 0]}>
-                    <LabelList dataKey="Converted" position="top" fontSize={11} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </ChartCard>
-        </Grid>
 
         <Grid item xs={12}>
           <Card>
@@ -329,21 +278,17 @@ export default function AnalyticsPage() {
                   <TableRow>
                     <SortableCell field="name" sort={sort} onSort={toggleSort}>Member</SortableCell>
                     <SortableCell field="assigned" sort={sort} onSort={toggleSort} align="right">Assigned</SortableCell>
-                    <SortableCell field="calls" sort={sort} onSort={toggleSort} align="right">Calls</SortableCell>
-                    <SortableCell field="followupsDone" sort={sort} onSort={toggleSort} align="right">Follow-ups done</SortableCell>
                     <SortableCell field="converted" sort={sort} onSort={toggleSort} align="right">Converted</SortableCell>
                     <SortableCell field="spaceBooked" sort={sort} onSort={toggleSort} align="right">Space booked (sqm)</SortableCell>
                     <SortableCell field="conversionRate" sort={sort} onSort={toggleSort} align="right" sx={{ width: 180 }}>Conversion</SortableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {teamLoading && teamRows.length === 0 && <SkeletonRows rows={6} columns={7} />}
+                  {teamLoading && teamRows.length === 0 && <SkeletonRows rows={6} columns={5} />}
                   {teamRows.map((t) => (
                     <TableRow key={t.userId} hover>
                       <TableCell>{t.name}</TableCell>
                       <TableCell align="right">{t.assigned}</TableCell>
-                      <TableCell align="right">{t.calls}</TableCell>
-                      <TableCell align="right">{t.followupsDone}</TableCell>
                       <TableCell align="right">{t.converted}</TableCell>
                       <TableCell align="right">{sqm(t.spaceBooked)}</TableCell>
                       <TableCell align="right">
@@ -354,7 +299,7 @@ export default function AnalyticsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {teamRows.length === 0 && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>No data</TableCell></TableRow>}
+                  {teamRows.length === 0 && <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>No data</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </CardContent>

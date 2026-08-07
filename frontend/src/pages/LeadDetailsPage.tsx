@@ -115,7 +115,20 @@ export default function LeadDetailsPage() {
             <CardHeader
               title="Lead Information"
               action={canModify && (
-                <Button size="small" startIcon={<EditIcon fontSize="small" />} onClick={() => setEditOpen(true)}>
+                // Available, not advertised: recedes into the card header and only
+                // picks up brand colour once you reach for it.
+                <Button
+                  size="small"
+                  startIcon={<EditIcon sx={{ fontSize: 16 }} />}
+                  onClick={() => setEditOpen(true)}
+                  sx={{
+                    color: 'text.secondary',
+                    fontWeight: 500,
+                    minHeight: 28,
+                    px: 1,
+                    '&:hover': { color: 'primary.main', bgcolor: 'action.hover' },
+                  }}
+                >
                   Edit
                 </Button>
               )}

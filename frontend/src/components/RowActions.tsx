@@ -1,5 +1,7 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { Button, IconButton, Menu, MenuItem, Stack, Tooltip } from '@mui/material';
+import { Button, IconButton, Menu, MenuItem, Stack, Tooltip, alpha } from '@mui/material';
+import type { Theme } from '@mui/material/styles';
+import { TABLE_HEAD } from '@/theme';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 
 /**
@@ -10,19 +12,26 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 export const STICKY_ACTION_COL = {
   position: 'sticky' as const,
   right: 0,
-  bgcolor: 'background.paper',
   zIndex: 2,
-  '&::before': {
-    content: '""',
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: '6px',
-    transform: 'translateX(-100%)',
-    pointerEvents: 'none',
-    background: 'linear-gradient(to right, rgba(15,23,42,0), rgba(15,23,42,0.08))',
+  // Frosted rather than opaque, so columns sliding underneath stay faintly visible
+  // instead of hitting a hard wall. Falls back to a solid surface where unsupported.
+  bgcolor: 'background.paper',
+  '@supports (backdrop-filter: blur(8px))': {
+    bgcolor: (t: Theme) => alpha(t.palette.background.paper, t.palette.mode === 'dark' ? 0.78 : 0.82),
+    backdropFilter: 'saturate(180%) blur(8px)',
   },
+  // In the header row it must wear the header colour, or the pinned corner shows
+  // as a pale notch cut out of the tinted band.
+  '&.MuiTableCell-head': {
+    bgcolor: (t: Theme) => (t.palette.mode === 'dark' ? TABLE_HEAD.bgDark : TABLE_HEAD.bgLight),
+    backdropFilter: 'none',
+  },
+  // A hairline edge plus one soft shadow, rather than a gradient strip: a per-cell
+  // gradient re-draws on every row and streaks against the row borders.
+  borderLeft: (t: Theme) => `1px solid ${t.palette.divider}`,
+  boxShadow: (t: Theme) => `-8px 0 12px -10px ${alpha(
+    t.palette.mode === 'dark' ? '#000' : '#0f172a', t.palette.mode === 'dark' ? 0.65 : 0.16,
+  )}`,
 };
 
 export interface RowAction {
@@ -64,7 +73,21 @@ export default function RowActions({ actions, limit = INLINE_LIMIT }: { actions:
       spacing={0.5}
       justifyContent="flex-end"
       alignItems={STACK_DIRECTION === 'column' ? 'stretch' : 'center'}
-      sx={{ display: 'inline-flex', minWidth: STACK_DIRECTION === 'column' ? 96 : 'auto' }}
+      sx={{
+        display: 'inline-flex',
+        minWidth: STACK_DIRECTION === 'column' ? 96 : 'auto',
+        // Actions belong to the row you are on. They rest quietly and come forward
+        // on hover or keyboard focus, so a 25-row table is not 50 shouting buttons.
+        opacity: 0.42,
+        transform: STACK_DIRECTION === 'column' ? 'none' : 'translateX(2px)',
+        transition: 'opacity .18s ease, transform .18s ease',
+        'tr:hover &, tr:focus-within &, &:hover, &:focus-within': {
+          opacity: 1,
+          transform: 'none',
+        },
+        // Touch devices have no hover, so never hide anything there.
+        '@media (hover: none)': { opacity: 1, transform: 'none' },
+      }}
     >
       {inline.map((a) => (
         <Button

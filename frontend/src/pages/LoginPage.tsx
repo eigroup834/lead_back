@@ -10,6 +10,7 @@ import { api } from '@/app/api';
 import { landingPath } from '@/constants';
 import { usePermissions } from '@/hooks/usePermissions';
 import { GRADIENTS } from '@/theme';
+import BrandMark from '@/components/BrandMark';
 
 const schema = z.object({ email: z.string().email(), password: z.string().min(6) });
 type FormValues = z.infer<typeof schema>;
@@ -48,9 +49,14 @@ export default function LoginPage() {
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: GRADIENTS.dark, p: 2 }}>
-      <Card sx={{ width: 400, maxWidth: '100%' }}>
+      <Card sx={{ width: 404, maxWidth: '100%', boxShadow: '0 24px 60px -20px rgba(0,0,0,0.5)' }}>
         <CardContent sx={{ p: 4 }}>
-          <Typography color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>Sign in to your account</Typography>
+          <Stack alignItems="center" sx={{ mb: 3 }}>
+            <BrandMark size={44} showTagline={false} />
+            <Typography color="text.secondary" variant="body2" sx={{ mt: 1.5 }}>
+              Sign in to your account
+            </Typography>
+          </Stack>
           {errorMessage && <Alert severity="error" sx={{ mb: 2 }}>{errorMessage}</Alert>}
           <form onSubmit={handleSubmit(onSubmit)}>
             <Stack spacing={2}>

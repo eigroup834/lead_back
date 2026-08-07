@@ -39,6 +39,14 @@ export const SIDEBAR = {
   text: '#96a0b8',
   textActive: '#ffffff',
   border: 'rgba(148,163,184,0.12)',
+  // Icons live on their own plate — muted at rest, brand indigo when active.
+  icon: '#8f9ab3',
+  iconHover: '#dbe2f0',
+  iconActive: '#c7d2fe',
+  iconPlate: 'rgba(148,163,184,0.08)',
+  iconPlateHover: 'rgba(148,163,184,0.16)',
+  iconPlateActive: alpha(BRAND[500], 0.28),
+  iconGlow: `0 0 0 1px ${alpha(BRAND[400], 0.35)}, 0 2px 10px ${alpha(BRAND[500], 0.35)}`,
 } as const;
 
 const NEUTRAL = {
@@ -58,6 +66,14 @@ const SHADOW = {
   md: '0 4px 10px -2px rgba(16,24,40,0.08), 0 2px 6px -2px rgba(16,24,40,0.05)',
   lg: '0 12px 28px -6px rgba(16,24,40,0.14), 0 4px 10px -4px rgba(16,24,40,0.06)',
   xl: '0 24px 48px -12px rgba(16,24,40,0.20)',
+} as const;
+
+/** Table header surface. Opaque so `stickyHeader` never shows rows through it. */
+export const TABLE_HEAD = {
+  bgLight: '#eef1fb',
+  bgDark: '#1a2140',
+  textLight: '#4d5680',
+  textDark: '#a9b3d6',
 } as const;
 
 const FONT = '"Inter", "Inter var", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -266,13 +282,13 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
         styleOverrides: {
           root: {
             '& .MuiTableCell-head': {
-              backgroundColor: isDark ? '#18203a' : '#fbfcfe',
-              color: isDark ? '#aab4c8' : '#5b6478',
+              backgroundColor: isDark ? TABLE_HEAD.bgDark : TABLE_HEAD.bgLight,
+              color: isDark ? TABLE_HEAD.textDark : TABLE_HEAD.textLight,
               fontSize: '0.6875rem',
               fontWeight: 700,
               letterSpacing: '0.06em',
               textTransform: 'uppercase',
-              borderBottom: `1px solid ${divider}`,
+              borderBottom: `1px solid ${alpha(BRAND[500], isDark ? 0.26 : 0.16)}`,
               whiteSpace: 'nowrap',
               paddingTop: 12,
               paddingBottom: 12,

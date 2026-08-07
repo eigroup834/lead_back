@@ -2,16 +2,17 @@ import { Suspense, useState } from 'react';
 import { Outlet, useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   AppBar, Avatar, Box, Breadcrumbs, Chip, Divider, Drawer, IconButton, Link, List, ListItemButton,
-  ListItemIcon, ListItemText, Menu, MenuItem, Toolbar, Tooltip, Typography,
+  ListItemIcon, ListItemText, Menu, MenuItem, Stack, Toolbar, Tooltip, Typography, alpha,
 } from '@mui/material';
+import type { Theme } from '@mui/material/styles';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import MenuIcon from '@mui/icons-material/Menu';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import LogoutIcon from '@mui/icons-material/Logout';
-import HubIcon from '@mui/icons-material/Hub';
 import { NAV_ITEMS, landingPath } from '@/constants';
 import { SIDEBAR, GRADIENTS } from '@/theme';
+import BrandMark, { BrandGlyph } from '@/components/BrandMark';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { toggleMode, toggleSidebar } from '@/features/ui/uiSlice';
@@ -35,7 +36,6 @@ const CRUMB_LABELS: Record<string, string> = {
   users: 'Users',
   roles: 'Roles',
   settings: 'Settings',
-  dashboard: 'Overview',
 };
 
 export default function AppLayout() {
@@ -73,48 +73,68 @@ export default function AppLayout() {
           borderColor: 'divider',
         }}
       >
-        <Toolbar sx={{ gap: 0.5, pr: { xs: 1.5, sm: 2.5 } }}>
+        <Toolbar sx={{ gap: 0.5, pr: { xs: 1.5, sm: 2.5 } }} disableGutters={false}>
           <Box
             sx={{
               width: { xs: 0, sm: width - 24 },
               display: 'flex',
               alignItems: 'center',
               gap: 1.25,
-              transition: 'width .2s',
+              transition: 'width .26s cubic-bezier(.4,0,.2,1)',
               overflow: 'hidden',
             }}
           >
-            <Box
-              sx={{
-                width: 30, height: 30, borderRadius: 1.5, flexShrink: 0,
-                bgcolor: 'primary.main', color: '#fff',
-                display: 'grid', placeItems: 'center',
-              }}
-            >
-              <HubIcon sx={{ fontSize: 18 }} />
-            </Box>
-            <Typography sx={{ fontWeight: 750, fontSize: '1rem', letterSpacing: '-0.03em', whiteSpace: 'nowrap' }}>
-              Lead CRM
-            </Typography>
+            {open ? <BrandMark /> : <BrandGlyph />}
           </Box>
 
           <Tooltip title={open ? 'Collapse menu' : 'Expand menu'}>
-            <IconButton size="small" onClick={() => dispatch(toggleSidebar())}>
+            <IconButton
+              size="small"
+              onClick={() => dispatch(toggleSidebar())}
+              sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
+            >
               {open ? <MenuOpenIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
             </IconButton>
           </Tooltip>
 
           <Box sx={{ flex: 1 }} />
 
-          <Tooltip title={mode === 'dark' ? 'Light mode' : 'Dark mode'}>
-            <IconButton size="small" onClick={() => dispatch(toggleMode())}>
-              {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
-          <NotificationsBell />
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={0.25}
+            sx={{
+              px: 0.5,
+              py: 0.25,
+              borderRadius: 999,
+              bgcolor: (t: Theme) => (t.palette.mode === 'dark' ? 'rgba(148,163,184,0.08)' : 'rgba(15,23,42,0.035)'),
+              '& .MuiIconButton-root': {
+                color: 'text.secondary',
+                '&:hover': { color: 'text.primary', bgcolor: 'transparent' },
+              },
+            }}
+          >
+            <Tooltip title={mode === 'dark' ? 'Light mode' : 'Dark mode'}>
+              <IconButton size="small" onClick={() => dispatch(toggleMode())}>
+                {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+            <NotificationsBell />
+          </Stack>
+
+          <Box sx={{ width: '1px', height: 22, bgcolor: 'divider', mx: 1, flexShrink: 0 }} />
 
           <Tooltip title="Account">
-            <IconButton onClick={(e) => setAnchor(e.currentTarget)} sx={{ ml: 0.5, p: 0.5 }}>
+            <IconButton
+              onClick={(e) => setAnchor(e.currentTarget)}
+              sx={{
+                p: 0.375,
+                border: 1,
+                borderColor: 'transparent',
+                transition: 'border-color .18s ease',
+                '&:hover': { borderColor: (t: Theme) => alpha(t.palette.primary.main, 0.4), bgcolor: 'transparent' },
+              }}
+            >
               <Avatar sx={{ width: 34, height: 34, background: GRADIENTS.brand, color: '#fff', fontSize: 13, fontWeight: 700, boxShadow: '0 2px 8px rgba(79,70,229,0.35)' }}>
                 {initials}
               </Avatar>
@@ -188,17 +208,38 @@ export default function AppLayout() {
                     overflow: 'hidden',
                     justifyContent: open ? 'flex-start' : 'center',
                     transition: 'background .18s ease, color .18s ease',
-                    '& .MuiListItemIcon-root': { color: 'inherit', transition: 'color .18s ease, transform .18s ease' },
+                    // The icon sits on its own plate: a quiet slate tile at rest that
+                    // lights up in brand indigo when the item is active. That gives the
+                    // active row an anchor the eye finds instantly, without colouring
+                    // every icon differently and turning the rail into confetti.
+                    '& .MuiListItemIcon-root': {
+                      color: SIDEBAR.icon,
+                      minWidth: 0,
+                      width: 30,
+                      height: 30,
+                      borderRadius: 9,
+                      display: 'grid',
+                      placeItems: 'center',
+                      backgroundColor: SIDEBAR.iconPlate,
+                      transition: 'color .18s ease, background .18s ease, box-shadow .18s ease',
+                    },
                     '&:hover': {
                       bgcolor: SIDEBAR.bgHover,
                       color: SIDEBAR.textActive,
-                      '& .MuiListItemIcon-root': { transform: 'translateX(1px)' },
+                      '& .MuiListItemIcon-root': {
+                        color: SIDEBAR.iconHover,
+                        backgroundColor: SIDEBAR.iconPlateHover,
+                      },
                     },
                     '&.Mui-selected': {
                       bgcolor: SIDEBAR.bgActive,
                       color: SIDEBAR.textActive,
                       '&:hover': { bgcolor: SIDEBAR.bgActive },
-                      '& .MuiListItemIcon-root': { color: '#c7d2fe' },
+                      '& .MuiListItemIcon-root': {
+                        color: SIDEBAR.iconActive,
+                        backgroundColor: SIDEBAR.iconPlateActive,
+                        boxShadow: SIDEBAR.iconGlow,
+                      },
                       '&::before': {
                         content: '""',
                         position: 'absolute',
@@ -209,8 +250,8 @@ export default function AppLayout() {
                     },
                   }}
                 >
-                  <ListItemIcon sx={{ minWidth: 0, mr: open ? 1.75 : 0 }}>
-                    <Icon sx={{ fontSize: 20 }} />
+                  <ListItemIcon sx={{ mr: open ? 1.5 : 0 }}>
+                    <Icon sx={{ fontSize: 19 }} />
                   </ListItemIcon>
                   {open && (
                     <ListItemText
