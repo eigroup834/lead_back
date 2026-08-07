@@ -11,7 +11,7 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import LogoutIcon from '@mui/icons-material/Logout';
 import HubIcon from '@mui/icons-material/Hub';
 import { NAV_ITEMS, landingPath } from '@/constants';
-import { SIDEBAR } from '@/theme';
+import { SIDEBAR, GRADIENTS } from '@/theme';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { toggleMode, toggleSidebar } from '@/features/ui/uiSlice';
@@ -93,7 +93,7 @@ export default function AppLayout() {
             >
               <HubIcon sx={{ fontSize: 18 }} />
             </Box>
-            <Typography sx={{ fontWeight: 750, fontSize: '0.98rem', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
+            <Typography sx={{ fontWeight: 750, fontSize: '1rem', letterSpacing: '-0.03em', whiteSpace: 'nowrap' }}>
               Lead CRM
             </Typography>
           </Box>
@@ -115,7 +115,7 @@ export default function AppLayout() {
 
           <Tooltip title="Account">
             <IconButton onClick={(e) => setAnchor(e.currentTarget)} sx={{ ml: 0.5, p: 0.5 }}>
-              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', color: '#fff', fontSize: 13, fontWeight: 700 }}>
+              <Avatar sx={{ width: 34, height: 34, background: GRADIENTS.brand, color: '#fff', fontSize: 13, fontWeight: 700, boxShadow: '0 2px 8px rgba(79,70,229,0.35)' }}>
                 {initials}
               </Avatar>
             </IconButton>
@@ -154,19 +154,21 @@ export default function AppLayout() {
           width, flexShrink: 0,
           '& .MuiDrawer-paper': {
             width, boxSizing: 'border-box', overflowX: 'hidden',
-            transition: 'width .2s',
+            transition: 'width .26s cubic-bezier(.4,0,.2,1)',
             bgcolor: SIDEBAR.bg,
+            backgroundImage: 'radial-gradient(120% 60% at 0% 0%, rgba(99,102,241,0.16) 0%, rgba(99,102,241,0) 55%)',
             color: SIDEBAR.text,
             borderRight: 'none',
+            boxShadow: '1px 0 0 rgba(148,163,184,0.10)',
           },
         }}
       >
         <Toolbar />
-        <List sx={{ px: 1.25, py: 2 }}>
+        <List sx={{ px: 1.25, py: 2 }} component="nav">
           {open && (
             <Typography
               variant="caption"
-              sx={{ px: 1.5, pb: 1, display: 'block', color: 'rgba(148,163,184,0.65)', fontWeight: 700, letterSpacing: '0.08em' }}
+              sx={{ px: 1.75, pb: 1.25, display: 'block', color: 'rgba(148,163,184,0.55)', fontWeight: 700, fontSize: '0.6875rem', letterSpacing: '0.1em' }}
             >
               WORKSPACE
             </Typography>
@@ -180,22 +182,29 @@ export default function AppLayout() {
                   selected={active}
                   onClick={() => navigate(item.path)}
                   sx={{
-                    mb: 0.25, minHeight: 42, px: 1.5,
+                    mb: 0.375, minHeight: 44, px: 1.5, borderRadius: 2.5,
                     color: SIDEBAR.text,
                     position: 'relative',
+                    overflow: 'hidden',
                     justifyContent: open ? 'flex-start' : 'center',
-                    '& .MuiListItemIcon-root': { color: 'inherit' },
-                    '&:hover': { bgcolor: SIDEBAR.bgHover, color: SIDEBAR.textActive },
+                    transition: 'background .18s ease, color .18s ease',
+                    '& .MuiListItemIcon-root': { color: 'inherit', transition: 'color .18s ease, transform .18s ease' },
+                    '&:hover': {
+                      bgcolor: SIDEBAR.bgHover,
+                      color: SIDEBAR.textActive,
+                      '& .MuiListItemIcon-root': { transform: 'translateX(1px)' },
+                    },
                     '&.Mui-selected': {
                       bgcolor: SIDEBAR.bgActive,
                       color: SIDEBAR.textActive,
                       '&:hover': { bgcolor: SIDEBAR.bgActive },
+                      '& .MuiListItemIcon-root': { color: '#c7d2fe' },
                       '&::before': {
                         content: '""',
                         position: 'absolute',
-                        left: 0, top: 9, bottom: 9,
-                        width: 3, borderRadius: 3,
-                        backgroundColor: '#3b82f6',
+                        left: 0, top: 8, bottom: 8,
+                        width: 3, borderRadius: '0 3px 3px 0',
+                        background: SIDEBAR.activeBar,
                       },
                     },
                   }}
@@ -206,7 +215,7 @@ export default function AppLayout() {
                   {open && (
                     <ListItemText
                       primary={item.label}
-                      primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: active ? 650 : 500 }}
+                      primaryTypographyProps={{ fontSize: '0.8438rem', fontWeight: active ? 650 : 500, letterSpacing: '-0.005em', noWrap: true }}
                     />
                   )}
                 </ListItemButton>
@@ -227,10 +236,15 @@ export default function AppLayout() {
 
       <Box
         component="main"
-        sx={{ flexGrow: 1, minWidth: 0, px: { xs: 2, md: 3 }, pb: 4, width: `calc(100% - ${width}px)` }}
+        sx={{
+          flexGrow: 1, minWidth: 0, pb: 5,
+          px: { xs: 1.5, sm: 2.5, md: 3.5 },
+          width: `calc(100% - ${width}px)`,
+          '& > .MuiBox-root': { animation: 'fadeInUp .28s cubic-bezier(.4,0,.2,1)' },
+        }}
       >
         <Toolbar />
-        <Breadcrumbs sx={{ my: 2 }}>
+        <Breadcrumbs sx={{ mt: 2.5, mb: 2 }}>
           <Link component={RouterLink} to={landingPath(level)} underline="hover" color="inherit">Home</Link>
           {crumbs.map((c, i) => {
             const to = '/' + crumbs.slice(0, i + 1).join('/');

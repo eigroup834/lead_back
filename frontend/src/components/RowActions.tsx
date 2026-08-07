@@ -75,15 +75,14 @@ export default function RowActions({ actions, limit = INLINE_LIMIT }: { actions:
           disabled={a.disabled}
           onClick={a.onClick}
           sx={{
-            minHeight: 26,
+            // Geometry comes from the theme's small-button spec; only the tighter
+            // row density is set here so table rows stay compact.
+            minHeight: 28,
             px: 1.25,
-            py: 0.15,
-            fontSize: '0.72rem',
-            lineHeight: 1.5,
+            py: 0.25,
+            fontSize: '0.75rem',
             whiteSpace: 'nowrap',
             justifyContent: 'center',
-            ...(a.primary ? {} : { borderColor: 'divider', color: 'primary.main' }),
-            '&:hover': a.primary ? {} : { borderColor: 'primary.main', bgcolor: 'action.hover' },
           }}
         >
           {a.label}

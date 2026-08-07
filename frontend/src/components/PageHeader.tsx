@@ -14,12 +14,12 @@ export default function PageHeader({ title, subtitle, actions }: {
       flexWrap="wrap"
       useFlexGap
       gap={1.5}
-      sx={{ mb: 2.5 }}
+      sx={{ mb: 3 }}
     >
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="h5">{title}</Typography>
+        <Typography variant="h5" sx={{ letterSpacing: '-0.025em' }}>{title}</Typography>
         {subtitle && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.625, maxWidth: 720 }}>
             {subtitle}
           </Typography>
         )}
